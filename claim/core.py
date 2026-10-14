@@ -1,26 +1,19 @@
 """claim core: load -> search -> region -> render.
 
-Read the numbered [stop N] comments in order.
+Read the numbered [stop N] comments in order; stops 6 and 7 are in picture.py.
 """
 
 import hashlib
 import re
-import textwrap
 from pathlib import Path
 
 import pymupdf
 
+from claim.picture import COLORS, render
 from claim.sources import html, image, pdf, table, text, url
 
-COLORS = {"exact": (0.13, 0.72, 0.33), "partial": (1.0, 0.65, 0.0), "not found": (0.8, 0.15, 0.15),
-          "not searchable": (0.55, 0.57, 0.6)}
-DARK = (0.13, 0.14, 0.16)
-WHITE = (1, 1, 1)
-SCALE = 2           # render at 2x so text is crisp on high-res screens
-HEADER = 18         # header line height in points (36px at 2x)
 LONG_QUOTE = 400    # above this, search_for gets unreliable, so skip the full-quote search
 MIN_SENTENCE = 5    # a "sentence" shorter than this many words is too common to trust
-MIN_VIEW = 280      # never show less than this many points of height (a third of an A4 page)
 RUN = 8             # words in the smallest piece we will still call a partial match
 
 # Curly quotes and long dashes become plain ones. Every replacement is one
@@ -64,7 +57,7 @@ def claim(file, quote, page=None):
             shot = html.screenshot(file, matched, COLORS[status])  # None if the text isn't in the live page
         except Exception:  # browser hiccup: keep the PDF picture
             pass
-    png, crop = render(doc[pno], rects, status, where, quote, matched, shot)
+    png, crop = render(doc[pno], rects, status, where, quote, matched, shot, whole=path.suffix.lower() in table.KINDS)
     text = f"{status} · {where}"
     if status == "partial":
         text += f' · matched: "{matched}"'
@@ -223,90 +216,3 @@ def merge_lines(rects):
         else:
             merged.append(pymupdf.Rect(r))
     return merged
-
-
-# [stop 6] Choose how much of the page to show.
-# A third of the page, centred on the highlight and full width, so the reader
-# sees the surrounding paragraph and not just the sentence. Short pages (like a
-# small table) are shown whole. Never past the page edge.
-def region(page, rects):
-    box = page.rect
-    if not rects:
-        return box
-    hit = pymupdf.Rect(rects[0])
-    for r in rects[1:]:
-        hit |= r
-    height = max(box.height / 3, hit.height + 40, MIN_VIEW)
-    top = (hit.y0 + hit.y1) / 2 - height / 2
-    top = max(min(top, box.y1 - height), box.y0)
-    bottom = min(top + height, box.y1)
-    lines = text_lines(page)  # don't slice a line of text in half at the edges
-    for line in sorted(lines, key=lambda r: -r.y1):  # walk upwards, so each move is re-checked
-        if line.y0 < top < line.y1:
-            top = line.y0 - 2
-    for line in sorted(lines, key=lambda r: r.y0):   # walk downwards
-        if line.y0 < bottom < line.y1:
-            bottom = line.y1 + 2
-    return pymupdf.Rect(box.x0, max(top, box.y0), box.x1, min(bottom, box.y1))
-
-
-def text_lines(page):
-    blocks = page.get_text("dict", flags=TEXT_FLAGS)["blocks"]
-    return [pymupdf.Rect(line["bbox"]) for b in blocks for line in b.get("lines", [])]
-
-
-# [stop 7] Draw the picture.
-# First the crop: a 2x photo of the chosen slice of the page, the way a PDF viewer
-# would show it (stamps, highlights and filled-in form fields too), with see-through
-# coloured boxes over each hit. The PNG is that crop under a dark header strip.
-# A not-found result gets a red header, the whole page untouched, and the quote
-# printed in a box underneath, so the reader can look for it themselves.
-# For a web page found in the browser, `shot` is the browser's own picture and is used as the crop.
-def render(page, rects, status, where, quote, matched, shot=None):
-    if shot:
-        size = pymupdf.Pixmap(shot)
-        clip, crop = pymupdf.Rect(0, 0, size.width / SCALE, size.height / SCALE), shot
-    else:
-        clip = region(page, rects) if page else pymupdf.Rect(0, 0, 595, 0)
-        crop = photo(page, clip, rects, status) if page else None
-    lines = [f"{status}  ·  " + where.replace(" · ", "  ·  ")]
-    if status == "partial":
-        lines.append(f'matched: "{shorten(matched, 110)}"')
-    head = HEADER * len(lines)
-    box = []
-    if status == "not found":
-        box = textwrap.wrap(f'quote: "{" ".join(quote.split())}"', width=int(clip.width / 5.6))
-    box_h = 14 * len(box) + 24 if box else 0
-
-    out = pymupdf.open()
-    canvas = out.new_page(width=clip.width, height=head + clip.height + box_h)
-    canvas.draw_rect(pymupdf.Rect(0, 0, clip.width, head), color=None,
-                     fill=COLORS[status] if status == "not found" else DARK)
-    canvas.draw_rect(pymupdf.Rect(0, 0, 6, head), color=None, fill=COLORS[status])
-    for i, line in enumerate(lines):
-        canvas.insert_text((14, HEADER * i + 12.5), line, fontsize=10, fontname="helv", color=WHITE)
-    if crop:
-        canvas.insert_image(pymupdf.Rect(0, head, clip.width, head + clip.height), stream=crop)
-    if box:
-        top = head + clip.height
-        canvas.draw_rect(pymupdf.Rect(0, top, clip.width, top + box_h), color=None, fill=(0.96, 0.94, 0.94))
-        canvas.draw_line((0, top), (clip.width, top), color=COLORS[status], width=1.5)
-        for i, line in enumerate(box):
-            canvas.insert_text((14, top + 20 + 14 * i), line, fontsize=10, fontname="helv", color=DARK)
-    return canvas.get_pixmap(matrix=pymupdf.Matrix(SCALE, SCALE)).tobytes("png"), crop
-
-
-def photo(page, clip, rects, status):
-    """The page slice at 2x with the highlight boxes on it: the picture without header or quote box."""
-    shot = page.get_pixmap(clip=clip, matrix=pymupdf.Matrix(SCALE, SCALE), annots=True)
-    canvas = pymupdf.open().new_page(width=clip.width, height=clip.height)
-    canvas.insert_image(canvas.rect, pixmap=shot)
-    for r in rects:
-        trim = r.height * 0.1  # lines overlap slightly; trimming avoids darker stripes between them
-        canvas.draw_rect(pymupdf.Rect(r.x0, r.y0 + trim, r.x1, r.y1 - trim) - (clip.x0, clip.y0, clip.x0, clip.y0),
-                         color=None, fill=COLORS[status], fill_opacity=0.35)
-    return canvas.get_pixmap(matrix=pymupdf.Matrix(SCALE, SCALE)).tobytes("png")
-
-
-def shorten(text, n):
-    return text if len(text) <= n else text[: n - 3] + "..."
