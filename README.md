@@ -1,18 +1,16 @@
 # claim
 
-When an AI quotes a document, `claim` shows you the actual page with the quote
-highlighted. It's one MCP tool that takes a file and a quote and returns a
-picture: green if the whole quote is there, amber if only part of it is, and a
-red bar with the page untouched if it couldn't find it. It reads PDFs, text and
-markdown files, CSV/TSV/XLSX tables, images, web pages, and links to files. In
-Claude Code it comes as a plugin that also scans every answer against the files
-the session read: every run of eight words the answer shares with a file, and
-every figure in it, is checked whether or not the model called the tool or used
-quotation marks. A figure counts only where the file's line shares words with the answer's
-sentence around it, so a 22.2% that happens to sit in an unrelated table doesn't count. $22,270M
-matches 22,270 on a page "in millions". A figure in no file is "worked out" (computed or inferred,
-never checked), and claim lists the figures next to it in the answer and where they are. The point is to make any citation checkable at a glance, without
-trusting the model's say-so.
+When an AI quotes a document, `claim` shows you the actual page with the quote highlighted. It's
+one MCP tool that takes a file and a quote and returns a picture: green if the whole quote is
+there, amber if only part of it is, and a red bar with the page untouched if it couldn't find
+it. It reads PDFs, text and markdown files, CSV/TSV/XLSX tables, images, web pages, and links to
+files. In Claude Code it comes as a plugin that also scans every answer against the files the
+session read: every run of eight words the answer shares with a file, and every figure in it, is
+checked whether or not the model called the tool or used quotation marks. A figure counts only
+where the file's line shares words with the answer's sentence around it. $22,270M matches 22,270
+on a page "in millions". A figure in no file is "worked out" (computed or inferred, never
+checked), and claim lists the figures next to it in the answer and where they are. The point is
+to make any citation checkable at a glance, without trusting the model's say-so.
 
 ## Install
 
@@ -71,6 +69,7 @@ against. A claim call on a file the session opened runs without a permission pro
 
 ## What it can't do yet
 
+- A figure counts only where its line in the file shares words with the answer's sentence, so one on a table row with no words on it (a column of totals) comes back "worked out".
 - A paraphrase with no eight words in common with the file produces nothing, by design: claim checks literally and never guesses.
 - Web pages are loaded by a headless browser, so pages that need a login or block bots won't work.
 - No OCR: scanned PDFs come back "not found", and images come back "not searchable".
