@@ -6,7 +6,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { ClaimRecord } from '../types'
-import { ago, answerCounts, card, isWeb, LOOK, look, name, onPage, shorten, spot } from './cards'
+import { ago, answerCounts, card, claimLine, isWeb, LOOK, look, name, onPage, shorten } from './cards'
 import type { Look } from './cards'
 
 const records = atom({ plugin: 'claim', key: 'records' } as const, [])
@@ -17,6 +17,7 @@ const opened = atom({ plugin: 'claim', key: 'opened' } as const, [])
 const turn = atom({ plugin: 'claim', key: 'turn' } as const, '')
 const unfolded = atom({ plugin: 'claim', key: 'unfolded' } as const, [])
 const answers = atom({ plugin: 'claim', key: 'answers' } as const, [])
+const flipped = atom({ plugin: 'claim', key: 'flipped' } as const, [])
 
 // The checks that need you: what the pane opens on first, and what the band names.
 const PROBLEMS: Look[] = ['not found', 'no file', 'partial', 'error']
@@ -243,35 +244,59 @@ export const register: Register = on => {
     )
   })
 
-  // [stop 12] Under Claude's answer, the card of each claim call it made for that answer, in the
-  // order the answer says them: the answer first, then where each part of it came from. The call
-  // itself stays as Claude Code draws it. An answer has no id here, so its last block is known by
-  // its text: the answer the turn ended with (kept at turn.complete) ends with it. Until the turn
-  // ends there is no answer to go under, and the cards come in then.
+  // [stop 12] Under Claude's answer, one line per claim of that answer, in the order the answer
+  // says them: the claims Claude called claim on, and those claim found itself at the end (`auto`).
+  // The first problem's card is open; a press anywhere on a line opens or closes its card. An answer
+  // has no id here, so its last block is known by its text: the answer the turn ended with (kept at
+  // turn.complete) ends with it. Until the turn ends there is no answer to go under.
   on('ui.render', { component: 'AssistantMessage' }, async ($, e, next) => {
     const drawn = await next(e)
     const said = plain(e.props.text)
     const answer = said.length > 0 ? (await read($, answers)).find(a => plain(a.text).endsWith(said)) : undefined
     if (!answer) return drawn
     const list = await read($, records)
-    const calls = inAnswer(list, answer.turn, answer.text).map(i => list[i] as ClaimRecord).filter(r => r.source === 'tool')
-    if (calls.length === 0) return drawn
+    const order = inAnswer(list, answer.turn, answer.text)
+    if (order.length === 0) return drawn
     const ui = $.ui.resolve(e)
-    const width = Math.max(20, (e.viewport?.columns ?? 80) - 6)
-    const cards = await Promise.all(calls.map(async r => card(ui, r, width, await picture($, e, r, width), () => enlarge($, r))))
+    const width = Math.max(20, (e.viewport?.columns ?? 80) - 4)
+    const problem = order.find(i => PROBLEMS.includes(look(list[i] as ClaimRecord)))
+    const flips = await read($, flipped)
+    const lines = await Promise.all(order.map(async i => {
+      const r = list[i] as ClaimRecord
+      const isOpen = (i === problem) !== flips.includes(rid(r))
+      const press = () => update($, flipped, f => (f.includes(rid(r)) ? f.filter(x => x !== rid(r)) : [...f, rid(r)]))
+      const body = isOpen ? card(ui, r, width - 2, await picture($, e, r, width - 2), () => enlarge($, r)) : null
+      return claimLine(ui, r, i, width, isOpen, press, body)
+    }))
     return (
       <ui.Box flexDirection="column">
         {drawn}
-        {cards.map(c => <ui.Box paddingLeft={2} marginTop={1} flexDirection="column">{c}</ui.Box>)}
+        <ui.Box paddingLeft={2} marginTop={1} flexDirection="column">{lines}</ui.Box>
       </ui.Box>
     )
+  }).catch(($, e, next) => next(e))
+
+  // A claim call's own rows (the call, and the line under it) are drawn as nothing once the call
+  // has its record: its line under the answer says the same, so they would only take room. While it
+  // runs, or when it fails or is refused, Claude Code draws them as usual.
+  on('ui.render', { component: 'ToolUse' }, async ($, e, next) => {
+    if (!(TOOLS as readonly string[]).includes(e.props.tool) || e.props.isRunning || e.props.isErrored || e.props.isInterrupted) return next(e)
+    if (!(await read($, records)).some(r => r.call === e.requestId)) return next(e)
+    const { Box } = $.ui.resolve(e)
+    return <Box />
+  }).catch(($, e, next) => next(e))
+  on('ui.render', { component: 'ToolResult' }, async ($, e, next) => {
+    if (!(TOOLS as readonly string[]).includes(e.props.tool) || e.props.isErrored) return next(e)
+    if (!(await read($, records)).some(r => r.call === e.props.tool_use_id)) return next(e)
+    const { Box } = $.ui.resolve(e)
+    return <Box />
   }).catch(($, e, next) => next(e))
 
   // [stop 13] The pane: the newest answer's checks in the order the answer says them, one line
   // each with its place (`Hotel › Amount · D18`), and the chosen one's card open under its line: the
   // first problem unless you press another line. A press anywhere on a line opens its card, and
-  // a press on the open one closes it. A heading
-  // says how many were checked and where they came from (claim calls, the end-of-turn scan).
+  // a press on the open one closes it: the same line as under the answer (claimLine). A heading
+  // says how many were checked and where they came from: Claude's claim calls, or `auto`, the end-of-answer scan.
   // Earlier answers follow, folded to one line each; pressing one unfolds it.
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const ui = $.ui.resolve(e)
@@ -291,30 +316,15 @@ export const register: Register = on => {
     const opened = list[shown]
     const openCard = opened ? card(ui, opened, width - 2, await picture($, e, opened, width - 2), () => enlarge($, opened)) : null
 
-    const line = (i: number) => {
-      const r = list[i] as ClaimRecord
-      const place = `${spot(r)}${r.source === 'turn' ? ' · scan' : ''}`
-      // The row acts as one button: its dot, quote and place light together and choose it alike.
-      const lit = { scope: `claim-row-${i}`, inverse: true }
-      const choose = () => update($, selected, () => (i === shown ? -2 : i))
-      return (
-        <Box flexDirection="column">
-          <Box>
-            <Text color={LOOK[look(r)].color} hover={lit}>{LOOK[look(r)].dot} </Text>
-            <Button key={`row-${i}`} plain dimColor={i !== shown} label={shorten(r.quote, Math.max(12, width - place.length - 5))} hover={lit} onPress={choose} />
-            <Button key={`place-${i}`} plain dimColor label={`  ${place}`} hover={lit} onPress={choose} />
-          </Box>
-          {i === shown ? <Box paddingLeft={2} flexDirection="column">{openCard}<Text> </Text></Box> : null}
-        </Box>
-      )
-    }
+    const line = (i: number) => claimLine(ui, list[i] as ClaimRecord, i, width, i === shown,
+      () => update($, selected, () => (i === shown ? -2 : i)), openCard)
     const newest = list.filter(r => r.turn === turns[0])
     const calls = newest.filter(r => r.source === 'tool').length
     return (
       <Box flexDirection="column" width={width}>
         <Text>
           <Text bold>This answer</Text>
-          <Text dimColor>  {newest.length} checked · {calls} from claim calls · {newest.length - calls} by the scan</Text>
+          <Text dimColor>  {newest.length} checked · {calls} by Claude · {newest.length - calls} auto</Text>
         </Text>
         {first.map(line)}
         {turns.slice(1).map(t => {
@@ -543,4 +553,9 @@ function inAnswer(list: ClaimRecord[], turnId: string, answer: string): number[]
 // Text as compared: no markdown marks or quotation marks, curly ones folded, one space, lower case.
 function plain(text: string): string {
   return text.replace(/[*_`>#|]/g, ' ').replace(/[“”"‘’']/g, '').replace(/\s+/g, ' ').trim().toLowerCase()
+}
+
+// A record's name that stays put while records are added: its call, or for a scan record its answer and words.
+function rid(r: ClaimRecord): string {
+  return r.call ?? `${r.turn}|${r.kind ?? 'quote'}|${r.quote}`
 }

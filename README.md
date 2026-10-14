@@ -61,12 +61,12 @@ end is the start of the file's fingerprint):
 
 The card under the call, then the scan catching a figure that is in no file.
 
-In Claude Code the cards of Claude's claim calls show under its answer: status and place, then the highlighted
-lines close up (for a spreadsheet, the matched cell lit); `enlarge` opens the picture full size. While an
-answer has checks, a line above the prompt counts them, its scan included; the next prompt hides it. A
-click anywhere on it or `/claim` opens the pane: the last answer's checks in its order, a click on a line opens its card. `/claim
-path/to/file` adds a file the plugin didn't notice you read. A claim call on a file the session opened
-runs without a permission prompt; any other file asks.
+In Claude Code each answer gets one line per claim under it, in the answer's order: the dot, the claim in
+Claude's words, and where it is; `auto` marks one claim checked by itself, not because Claude asked. The
+first problem's card is open, and a click on a line opens or closes its card: the highlighted lines close
+up, and `enlarge` opens the picture. The line above the prompt counts the answer's checks; a click on it or
+`/claim` opens the pane, the same lines for every answer. `/claim path/to/file` adds a file to check
+against. A claim call on a file the session opened runs without a permission prompt; any other asks.
 
 ## What it can't do yet
 

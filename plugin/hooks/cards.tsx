@@ -72,6 +72,26 @@ export function card(ui: Ui, r: ClaimRecord, width: number, picture: JSX.Element
   )
 }
 
+// One claim as a line: its dot, the claim in the model's words, and where it is (`· auto` when claim
+// checked it at the end of the answer, not because Claude asked). The same line in the pane and under
+// Claude's answer. It acts as one button: its pieces light together, and a press anywhere on it but
+// the dot (a button's label can't be coloured) runs `press`. Open, its card sits under it.
+export function claimLine(ui: Ui, r: ClaimRecord, key: number, width: number, isOpen: boolean, press: () => void, body: JSX.Element | null) {
+  const { Box, Text, Button } = ui
+  const place = `${spot(r)}${r.source === 'turn' ? ' · auto' : ''}`
+  const lit = { scope: `claim-line-${key}`, inverse: true }
+  return (
+    <Box flexDirection="column">
+      <Box>
+        <Text color={LOOK[look(r)].color} hover={lit}>{LOOK[look(r)].dot} </Text>
+        <Button key={`row-${key}`} plain dimColor={!isOpen} label={shorten(r.quote, Math.max(12, width - place.length - 5))} hover={lit} onPress={press} />
+        <Button key={`place-${key}`} plain dimColor label={`  ${place}`} hover={lit} onPress={press} />
+      </Box>
+      {isOpen ? <Box paddingLeft={2} flexDirection="column">{body}<Text> </Text></Box> : null}
+    </Box>
+  )
+}
+
 // The matched lines' background: the theme's own green row for found, amber
 // (with the theme's contrasting text) for partly found.
 function tint(status: ClaimRecord['status']) {

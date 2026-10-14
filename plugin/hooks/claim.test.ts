@@ -264,8 +264,8 @@ test('quotes in the answer are checked against the files the session read', asyn
   // The two the scan found say so after their place; the tool's does not. The worst comes first, its card open.
   const paneProps = { title: 'claim', isFocused: false, bodyColumns: 80, placement: 'dock', scroll: { offset: 0, bodyRows: 30, contentRows: 30 }, view: {} } as never
   const pane = await $.ui.mount({ plugin: 'claim', surface: 'terminal', component: 'Pane', requestId: 'claim', props: paneProps })
-  expect((await pane.findAll({ type: 'Button' })).filter(b => / · scan$/.test(String(b.props.label)))).toHaveLength(2)
-  expect(await pane.find({ text: /^ {2}3 checked · 1 from claim calls · 2 by the scan$/ })).toBeDefined()
+  expect((await pane.findAll({ type: 'Button' })).filter(b => / · auto$/.test(String(b.props.label)))).toHaveLength(2)
+  expect(await pane.find({ text: /^ {2}3 checked · 1 by Claude · 2 auto$/ })).toBeDefined()
   expect(await pane.find({ text: /^Not in the file$/ })).toBeDefined()
   await pane.press({ key: 'row-1' })
   expect(await pane.find({ text: /^In the file$/ })).toBeDefined()
@@ -430,7 +430,7 @@ test('the pane shows each answer\'s quotes together under one heading', async ($
   const paneProps = { title: 'claim', isFocused: false, bodyColumns: 100, placement: 'dock', scroll: { offset: 0, bodyRows: 30, contentRows: 30 }, view: {} } as never
   const pane = await $.ui.mount({ plugin: 'claim', surface: 'terminal', component: 'Pane', requestId: 'claim', props: paneProps })
   // The newest answer first, its one check open; the earlier answer folded to one line with its counts.
-  expect(await pane.find({ text: /^ {2}1 checked · 0 from claim calls · 1 by the scan$/ })).toBeDefined()
+  expect(await pane.find({ text: /^ {2}1 checked · 0 by Claude · 1 auto$/ })).toBeDefined()
   expect(await pane.find({ text: /^Partly in the file$/ })).toBeDefined()
   expect(await pane.find({ text: ' · ● 2 in file' })).toBeDefined()
   const lines = async () => (await pane.findAll({ type: 'Button' })).map(b => String(b.props.label))
@@ -438,7 +438,7 @@ test('the pane shows each answer\'s quotes together under one heading', async ($
   // Pressing the earlier answer unfolds it: its two lines, the tool's and the scan's.
   await pane.press({ key: 'answer-t1' })
   expect((await lines()).some(l => /^Operating margins stay stable/.test(l))).toBe(true)
-  expect((await pane.findAll({ type: 'Button' })).some(b => /a\.pdf · page 1 · scan$/.test(String(b.props.label)))).toBe(true)
+  expect((await pane.findAll({ type: 'Button' })).some(b => /a\.pdf · page 1 · auto$/.test(String(b.props.label)))).toBe(true)
   await pane.unmount()
 })
 
@@ -507,7 +507,7 @@ test('the whole answer goes to the scan as written, and a figure from nowhere sa
   // The older record, a figure the scan found in three rows, says it was lit in the first of them.
   await pane.press({ key: 'row-1' })
   expect(await pane.find({ text: /notes\.md · lines 48–48? · 1 of 3 places$|notes\.md · line 48 · 1 of 3 places$/ })).toBeDefined()
-  expect(await pane.find({ text: /^ {2}2 checked · 0 from claim calls · 2 by the scan$/ })).toBeDefined()
+  expect(await pane.find({ text: /^ {2}2 checked · 0 by Claude · 2 auto$/ })).toBeDefined()
   await pane.unmount()
   // With no red quote, the band names the figure after its own count.
   const bandProps = { hasSurvey: false, isWorking: false, maxRows: 4, bodyColumns: 80, scroll: { offset: 0, bodyRows: 4, contentRows: 1 }, view: {} } as never
@@ -725,12 +725,18 @@ test('each claim call\'s card shows under Claude\'s answer, not under the call, 
   await $.turn.start({ text: 'which city hosts the games?', turnId: 't1' } as never)
   await $.tool.call({ tool: 'mcp__claim__claim', tool_use_id: 'call-1', file: 'cities.csv', quote: 'host of the 2031 regional games' } as never)
 
-  // Under the call: Claude Code's own drawing, no card.
-  const under = await $.ui.mount({ plugin: 'claim', surface: 'terminal', component: 'ToolResult', requestId: 'call-1', viewport: { columns: 90, rows: 40 },
-    props: { tool_use_id: 'call-1', tool: 'mcp__claim__claim', output: 'the picture for the model', isErrored: false } } as never)
-  expect(await under.find({ text: 'engine' })).toBeDefined()
-  expect(await under.find({ text: /^Partly in the file$/ })).toBeUndefined()
+  // The call's own rows draw nothing once it has its record: its line under the answer says the same.
+  const row = (component: string, props: object) => $.ui.mount({ plugin: 'claim', surface: 'terminal', component, requestId: 'call-1', viewport: { columns: 90, rows: 40 }, props } as never)
+  const under = await row('ToolResult', { tool_use_id: 'call-1', tool: 'mcp__claim__claim', output: 'the picture for the model', isErrored: false })
+  expect(await under.find({ text: 'engine' })).toBeUndefined()
   await under.unmount()
+  const callRow = await row('ToolUse', { tool: 'mcp__claim__claim', input: {}, isRunning: false, isErrored: false, isInterrupted: false })
+  expect(await callRow.find({ text: 'engine' })).toBeUndefined()
+  await callRow.unmount()
+  // While it runs, or when it failed, Claude Code draws it as usual.
+  const running = await row('ToolUse', { tool: 'mcp__claim__claim', input: {}, isRunning: true, isErrored: false, isInterrupted: false })
+  expect(await running.find({ text: 'engine' })).toBeDefined()
+  await running.unmount()
 
   const message = (text: string) => ({ plugin: 'claim', surface: 'terminal', component: 'AssistantMessage', requestId: `m-${text.length}`, viewport: { columns: 90, rows: 40 },
     props: { text, isFirstOfReply: true } }) as never
@@ -740,11 +746,18 @@ test('each claim call\'s card shows under Claude\'s answer, not under the call, 
   expect(await writing.find({ text: /^Partly in the file$/ })).toBeUndefined()
   await writing.unmount()
   await $.turn.complete({ turnId: 't1', durationMs: 1000, isAborted: false, reason: 'answer', answer: `Checking the sheet.\n\n${reply}` })
-  // The answer's last block: the answer as Claude Code draws it, then the call's card under it.
+  // The answer's last block: the answer as Claude Code draws it, then one line per claim, the first
+  // problem (here partly in the file) open with its card. A press anywhere on the line closes it.
   const done = await $.ui.mount(message(reply))
   expect(await done.find({ text: 'engine' })).toBeDefined()
+  expect((await done.find({ type: 'Button', label: 'host of the 2031 regional games' }))).toBeDefined()
   expect(await done.find({ text: /^Partly in the file$/ })).toBeDefined()
   expect(await done.find({ text: 'Malmo › note = host of the 2031 regional games' })).toBeDefined()
+  const key = String((await done.findAll({ type: 'Button' })).find(b => /^place-/.test(String(b.key)))?.key)
+  await done.press({ key })
+  expect(await done.find({ text: /^Partly in the file$/ })).toBeUndefined()
+  await done.press({ key })
+  expect(await done.find({ text: /^Partly in the file$/ })).toBeDefined()
   await done.unmount()
   // An earlier block of the same answer gets no cards; they go under the end only.
   const earlier = await $.ui.mount(message('Checking the sheet.'))

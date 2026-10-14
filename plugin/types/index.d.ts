@@ -60,6 +60,8 @@ declare module 'claude-code' {
       selected: number
       // the last answers' text, newest first, at most 20: cards go under their answer, and the pane follows its order
       answers: { turn: string; text: string }[]
+      // the lines under an answer the person opened or closed, against the default (its first problem open)
+      flipped: string[]
       // whether the pane is open, so the band's hint can say "esc close"
       isOpen: boolean
       // the files this session has read (Read, claim tool calls, @ attachments), newest first, at most 50

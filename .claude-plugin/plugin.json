@@ -1,6 +1,6 @@
 {
   "name": "claim",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Shows where a quote is in its source file, checked by claim itself, above the prompt and in a pane.",
   "author": { "name": "alnaik" },
   "repository": "https://github.com/alnaik/claim",
