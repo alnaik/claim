@@ -61,12 +61,12 @@ end is the start of the file's fingerprint):
 
 The card under the call, then the scan catching a figure that is in no file.
 
-In Claude Code each claim call's card shows right under it: status, place, the
-highlighted crop (for a spreadsheet, the matched cell lit) and the quote. While an
-answer has checks, a line above the prompt counts them, its scan included; the
-next prompt hides it. A click on it or `/claim` opens the pane, last answer first, problems on top. `/claim
-path/to/file` adds a file the plugin didn't notice you read. A claim call on a
-file the session opened runs without a permission prompt; any other file asks.
+In Claude Code each claim call's card shows right under it: status and place, then the highlighted
+lines close up (for a spreadsheet, the matched cell lit); `enlarge` opens the picture full size. While an
+answer has checks, a line above the prompt counts them, its scan included; the next prompt hides it. A
+click anywhere on it, `c` or `/claim` opens the pane, last answer first, problems on top. `/claim
+path/to/file` adds a file the plugin didn't notice you read. A claim call on a file the session opened
+runs without a permission prompt; any other file asks.
 
 ## What it can't do yet
 
@@ -76,4 +76,4 @@ file the session opened runs without a permission prompt; any other file asks.
 - A quote that runs across a page break is shown as a partial match from one page.
 - Spreadsheets: `.xlsx`, `.xlsm` and `.xls` work, `.ods` and Numbers don't. Cells show the way Excel shows them for the common number and date codes, with the stored value under them; other codes, `.xls` and CSV show the stored value; Excel's default date follows this computer's date order. A formula cell shows its saved result, or the formula itself when a script wrote the file without one; claim never works a sum out.
 - Word, PowerPoint and other office files aren't read yet, nor pasted images with no file. Files opened through a shell command are tracked by their names in the command.
-- Cards show pictures only in terminals that draw images (Ghostty, Kitty, WezTerm); elsewhere a PDF card shows the page's lines around the quote instead. The desktop app and VS Code may show a large crop's path. Claude Desktop and Cursor get the tool's image only, no band, pane or scan.
+- Cards show pictures only in terminals that draw images (Ghostty, Kitty, WezTerm); elsewhere a PDF card shows the status line, and `enlarge` opens the picture. The desktop app and VS Code may show a large crop's path. Claude Desktop and Cursor get the tool's image only, no band, pane or scan.

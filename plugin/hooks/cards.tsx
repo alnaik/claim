@@ -5,7 +5,7 @@ import type { Elements } from 'claude-code'
 
 import type { ClaimRecord, TableExcerpt } from '../types'
 
-type Ui = Pick<Elements['terminal'], 'Box' | 'Text'>
+type Ui = Pick<Elements['terminal'], 'Box' | 'Text' | 'Button'>
 
 // How each of core's statuses looks: the card's word, the band's count word, the dot and its colour.
 // The words say where the text is, not that the answer is right: "In the file" proves the
@@ -29,7 +29,7 @@ export function look(r: ClaimRecord): Look {
 
 const HELP = {
   exact: null,
-  partial: 'Only the highlighted part is in the file.',
+  partial: null,  // the amber highlight says it: only that part is in the file
   'not found': "This quote is not in the file. Don't rely on it.",
   // A figure (a sum, an average) can be right without being in any file; the card says to check its sources.
   // The scan looks in the ten files read most recently, so a figure from an older one is reported this way too.
@@ -38,23 +38,20 @@ const HELP = {
   error: null,
 } as const
 
-// The card, top to bottom: a status line (dot, word, where, the file's fingerprint), the excerpt,
-// for something online a link that opens it at the quote, the quote as the model wrote it, and a
-// help line when something is wrong. The excerpt is numbered lines for text and code, rows for
-// tables, else `picture`, which register.tsx makes (it needs the engine to open the file). In the
-// terminal a PDF's picture has the page's own lines under it, since most terminals show an
-// image's alt text, not its pixels.
-export function card(ui: Ui, r: ClaimRecord, width: number, picture: JSX.Element | null, terminal: boolean) {
-  const { Box, Text } = ui
+// The card, top to bottom: a status line (dot, word, where, `enlarge` when there is a picture, the
+// file's fingerprint), for something online a link that opens it at the quote, then what shows the
+// hit: a text file's numbered lines, a table's rows, else `picture`, which register.tsx makes (it
+// needs the engine to open the file). Nothing is repeated under it. A quote that wasn't found has
+// nothing to show, so its card is the quote as the model wrote it and a help line instead.
+// `enlarge` opens the picture full size: a terminal picture can't be clicked.
+export function card(ui: Ui, r: ClaimRecord, width: number, picture: JSX.Element | null, enlarge?: () => void) {
+  const { Box, Text, Button } = ui
   const help = r.status === 'error' ? r.error : HELP[look(r)]
   const table = r.excerpt && !Array.isArray(r.excerpt) ? r.excerpt : null
-  const pageLines = r.lines && Array.isArray(r.excerpt) ? textLines(ui, r, r.lines, r.excerpt, width) : null
-  const excerpt = pageLines && !onPage(r) ? pageLines : table ? tableRows(ui, r, table, width) : picture && terminal && pageLines ? (
-    <Box flexDirection="column" width={width}>
-      {picture}
-      {pageLines}
-    </Box>
-  ) : picture
+  const lines = r.lines && Array.isArray(r.excerpt) && !onPage(r) ? textLines(ui, r, r.lines, r.excerpt, width) : null
+  const found = r.status === 'exact' || r.status === 'partial'
+  const excerpt = lines ?? (table ? tableRows(ui, r, table, width) : found || r.status === 'not searchable' ? picture : null)
+  const zoom = enlarge && picture && excerpt === picture
   return (
     <Box flexDirection="column" width={width}>
       <Box justifyContent="space-between">
@@ -62,11 +59,14 @@ export function card(ui: Ui, r: ClaimRecord, width: number, picture: JSX.Element
           <Text color={LOOK[look(r)].color}>{LOOK[look(r)].dot}</Text> <Text bold>{LOOK[look(r)].word}</Text>
           <Text dimColor>  {where(r)}</Text>
         </Text>
-        <Text dimColor>{isWeb(r.path) ? 'web' : (r.sha256 ?? '').slice(0, 8)}</Text>
+        <Box>
+          {zoom ? <Button key={`enlarge-${r.crop}`} plain dimColor label="enlarge" onPress={enlarge} /> : null}
+          <Text dimColor>{zoom ? '  ' : ''}{isWeb(r.path) ? 'web' : (r.sha256 ?? '').slice(0, 8)}</Text>
+        </Box>
       </Box>
-      {excerpt}
       {r.link ? <Text dimColor>{r.link}</Text> : null}
-      <Text dimColor>“{r.quote}”</Text>
+      {excerpt}
+      {found && excerpt ? null : <Text dimColor>“{r.quote}”</Text>}
       {help ? <Text color={look(r) === 'not found' ? 'error' : undefined}>{help}</Text> : null}
     </Box>
   )

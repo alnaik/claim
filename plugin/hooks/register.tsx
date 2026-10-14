@@ -193,50 +193,35 @@ export const register: Register = on => {
   // [stop 11] The band above the prompt, shown only while the current answer has checks: from its
   // first claim call or scan record until the next prompt starts a new answer, which hides it again.
   // So what it counts is always this answer, never an earlier one (those are in the pane, folded).
-  // It shows "claim", a coloured dot and a count per status, the newest red quote (or figure in no
-  // file) named after its count, and "open". Every word on the line is a button, so one click anywhere
-  // opens the pane (a click elsewhere only gave the band the keyboard, and then `c` opened it);
-  // pressing the named quote opens the pane on its card.
+  // It reads "claim", a dot and a count per status, the newest red quote (or figure in no file)
+  // named after its count, and "open". The whole line is one button: a press anywhere opens the
+  // pane on the worst check first (the named one), or closes it when it is open; `c` does the same.
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const list = await read($, records)
     const current = await read($, turn)
     const last = list.filter(r => r.turn === current)
     if (last.length === 0 || e.props.hasSurvey) return next(e)
     const open = await read($, isOpen)
-    const { Box, Text, Button } = $.ui.resolve(e)
+    const { Button } = $.ui.resolve(e)
     const present = (Object.keys(LOOK) as Look[]).filter(s => last.some(r => look(r) === s))
-    const counts = present.map(s => `● ${last.filter(r => look(r) === s).length} ${LOOK[s].count}`).join(' · ')
-    // The item named after its count: the answer's newest red quote, or if none, its newest figure in no file.
-    // An index into the whole list, since that is what `selected` points into.
-    const lastRed = (status: Look) => list.findIndex(r => r.turn === current && look(r) === status)
-    const quoteRed = lastRed('not found')
-    const red = quoteRed >= 0 ? quoteRed : lastRed('no file')
-    const redLook = red >= 0 ? look(list[red] as ClaimRecord) : null
-    const room = e.props.bodyColumns - 'claim '.length - counts.length - ': '.length - (open ? 'esc close' : 'open').length - 2
-    const named = red >= 0 && room >= 12 ? shorten(list[red]?.quote ?? '', room) : null
-    const press = () => openPane($)
-    return (
-      <Box width={e.props.bodyColumns} justifyContent="space-between">
-        <Box>
-          <Button key="claim" plain label="claim " onPress={press} />
-          {present.map((status, i) => (
-            <Box>
-              <Text color={LOOK[status].color}>{LOOK[status].dot} </Text>
-              <Button key={`count-${status}`} plain label={`${last.filter(r => look(r) === status).length} ${LOOK[status].count}${status === redLook && named ? ': ' : ''}`} onPress={press} />
-              {status === redLook && named ? (
-                <Button key="red" plain dimColor label={named} onPress={async () => { await update($, selected, () => red); await openPane($) }} />
-              ) : null}
-              {i < present.length - 1 ? <Text> · </Text> : null}
-            </Box>
-          ))}
-        </Box>
-        {open ? (
-          <Text dimColor>esc close</Text>
-        ) : (
-          <Button key="open" plain hotkey="c" dimColor label="open" onPress={press} />
-        )}
-      </Box>
-    )
+    const counts = present.map(s => `${LOOK[s].dot} ${last.filter(r => look(r) === s).length} ${LOOK[s].count}`).join(' · ')
+    // The item named after the counts: the answer's newest red quote, or if none, its newest figure in no file.
+    const red = last.find(r => look(r) === 'not found') ?? last.find(r => look(r) === 'no file')
+    const hint = open ? 'esc close' : 'open'
+    const room = e.props.bodyColumns - 'claim  '.length - counts.length - ': '.length - hint.length - 2
+    const named = red && room >= 12 ? `: ${shorten(red.quote, room)}` : ''
+    const left = `claim  ${counts}${named}`
+    const label = `${left}${' '.repeat(Math.max(1, e.props.bodyColumns - left.length - hint.length))}${hint}`
+    const press = async () => {
+      if (open) {
+        await $.ui.close({ id: PANE })
+        await update($, isOpen, () => false)
+      } else {
+        await update($, selected, () => -1)  // the pane opens on the worst check of this answer
+        await openPane($)
+      }
+    }
+    return <Button key="band" plain hotkey="c" label={label} onPress={press} />
   })
 
   // [stop 12] Under each claim call in the conversation, its card in place of the tool's own
@@ -247,7 +232,7 @@ export const register: Register = on => {
     const r = (await read($, records)).find(one => one.call === e.props.tool_use_id)
     if (!r) return next(e)
     const width = Math.max(20, (e.viewport?.columns ?? 80) - 6)
-    return card($.ui.resolve(e), r, width, await picture($, e, r, width, true), e.surface === 'terminal')
+    return card($.ui.resolve(e), r, width, await picture($, e, r, width), () => enlarge($, r))
   }).catch(($, e, next) => next(e))
 
   // Claude Code folds a run of calls into one line (`Read 1 file, called plugin:claim:claim 5
@@ -262,7 +247,7 @@ export const register: Register = on => {
     if (found.length === 0) return drawn
     const ui = $.ui.resolve(e)
     const width = Math.max(20, (e.viewport?.columns ?? 80) - 6)
-    const cards = await Promise.all(found.map(async r => card(ui, r, width, await picture($, e, r, width, true), e.surface === 'terminal')))
+    const cards = await Promise.all(found.map(async r => card(ui, r, width, await picture($, e, r, width), () => enlarge($, r))))
     return (
       <ui.Box flexDirection="column">
         {drawn}
@@ -290,7 +275,7 @@ export const register: Register = on => {
     const shown = chosen >= 0 && chosen < list.length ? chosen : (worstFirst(turns[0] ?? '')[0] ?? 0)
     const open = [turns[0], list[shown]?.turn, ...(await read($, unfolded))]  // the answers whose lines show
     const opened = list[shown] as ClaimRecord
-    const openCard = card(ui, opened, width - 2, await picture($, e, opened, width - 2, false), e.surface === 'terminal')
+    const openCard = card(ui, opened, width - 2, await picture($, e, opened, width - 2), () => enlarge($, opened))
 
     const line = (i: number) => {
       const r = list[i] as ClaimRecord
@@ -338,15 +323,16 @@ export const register: Register = on => {
 // A record's crop picture for its card, or null when it has none. The terminal opens the file
 // itself; the desktop and editor surfaces can't, so the picture travels inside an SVG, the
 // half-size copy so it fits more often, and past the SVG size limit we show the crop's path.
-// Under a claim call (`inline`) the picture is at most 14 rows tall, so the conversation stays readable.
-async function picture($: EngineInterface, e: Parameters<EngineInterface['ui']['resolve']>[0], r: ClaimRecord, width: number, inline: boolean) {
+// The picture is at most 14 rows tall, under a claim call and in the pane alike: the conversation
+// stays readable, and a big picture redrawn on every scroll is what made the pane stutter.
+async function picture($: EngineInterface, e: Parameters<EngineInterface['ui']['resolve']>[0], r: ClaimRecord, width: number) {
   if (!r.crop) return null
   const [w, tall] = r.size ?? [3, 1]
   const alt = r.matched ?? r.quote
   if (e.surface === 'terminal') {
     const { Image } = $.ui.resolve(e)
     // A terminal cell is about twice as tall as it is wide.
-    const rows = Math.max(1, Math.min(inline ? 14 : 40, Math.round((width * tall) / w / 2)))
+    const rows = Math.max(1, Math.min(14, Math.round((width * tall) / w / 2)))
     return <Image source={{ file: r.crop, format: 'png' }} columns={Math.min(width, 255, Math.round((rows * 2 * w) / tall))} rows={rows} alt={alt} />
   }
   const { Svg, Text } = $.ui.resolve(e)
@@ -509,6 +495,13 @@ async function repo($: EngineInterface): Promise<string> {
     if (await $.fs.exists(`${dir}/claim/core.py`)) return dir
   }
   return (await $.env.get('CLAIM_HOME')) ?? root
+}
+
+// Open a record's picture full size in the computer's own viewer (Preview on a Mac).
+async function enlarge($: EngineInterface, r: ClaimRecord) {
+  if (!r.crop) return
+  const run = await $.process.run(['open', r.crop], { timeoutMs: 10000 }).catch(() => null)
+  if (!run || run.exitCode !== 0) await $.process.run(['xdg-open', r.crop], { timeoutMs: 10000 }).catch(() => null)
 }
 
 async function openPane($: EngineInterface) {

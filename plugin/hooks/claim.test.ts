@@ -40,6 +40,7 @@ test('band and pane show what claim found', async ($, on) => {
   })
   on('tool.call', () => ({ result: 'the model sees this, the plugin never draws it' }))
   on('ui.open', () => ({ value: { isPlaced: true as const } }))
+  on('ui.close', () => ({ value: undefined }))
   on('command.register', ($, e) => ({ value: { command: e.name } }))
   on('session.start', ($, e) => ({ cwd: e.cwd }))
   on('prompt.compose', () => ({ sections: [{ id: 'intro', text: 'You are Claude Code.', scope: 'shared' as const }] }))
@@ -69,20 +70,19 @@ test('band and pane show what claim found', async ($, on) => {
   await $.tool.call({ tool: 'mcp__plugin_claim_claim__claim', file: 'report.pdf', quote: 'something else', page: 2 })
 
   const ui = await $.ui.mount({ ...band, surface: 'terminal', props: bandProps })
-  expect(await ui.find({ text: /1 in file/ })).toBeDefined()
-  expect(await ui.find({ text: /1 not in file/ })).toBeDefined()
-  expect(await ui.find({ text: /1 could not run/ })).toBeDefined()
-  expect((await ui.find({ key: 'open' }))?.props.label).toBe('open')
-  // The not-found count names its quote; pressing the name opens the pane on that card.
-  expect((await ui.find({ key: 'red' }))?.props.label).toBe('revenue tripled…')  // cut to the room left on an 80-column line
-  // Pressing the band opens the pane, and the hint says how to close it.
-  await ui.press({ key: 'open' })
-  expect(await ui.find({ text: 'esc close' })).toBeDefined()
-  await ui.press({ key: 'red' })
+  // The whole band is one button: the counts, the not-found quote named after them, and "open".
+  const bandLabel = async () => String((await ui.find({ key: 'band' }))?.props.label ?? '')
+  expect(await bandLabel()).toMatch(/^claim {2}● 1 in file · ● 1 not in file · ● 1 could not run: revenue tripled… +open$/)  // cut to an 80-column line
+  expect((await bandLabel()).length).toBe(80)
+  // One press opens the pane on the worst check, and the hint says how to close it; another closes it.
+  await ui.press({ key: 'band' })
+  expect(await bandLabel()).toMatch(/esc close$/)
   const landed = await $.ui.mount({ plugin: 'claim', surface: 'terminal', component: 'Pane', requestId: 'claim', props: { title: 'claim', isFocused: false, bodyColumns: 60, placement: 'dock', scroll: { offset: 0, bodyRows: 30, contentRows: 30 }, view: {} } as never })
   expect(await landed.find({ text: /^Not in the file$/ })).toBeDefined()
   await landed.press({ key: 'row-0' })
   await landed.unmount()
+  await ui.press({ key: 'band' })
+  expect(await bandLabel()).toMatch(/ open$/)
   await ui.unmount()
 
   const paneProps = { title: 'claim', isFocused: false, bodyColumns: 60, placement: 'dock', scroll: { offset: 0, bodyRows: 30, contentRows: 30 }, view: {} } as never
@@ -511,9 +511,9 @@ test('the whole answer goes to the scan as written, and a figure from nowhere sa
   // With no red quote, the band names the figure after its own count.
   const bandProps = { hasSurvey: false, isWorking: false, maxRows: 4, bodyColumns: 80, scroll: { offset: 0, bodyRows: 4, contentRows: 1 }, view: {} } as never
   const band = await $.ui.mount({ plugin: 'claim', component: 'AbovePrompt', requestId: 'band', surface: 'terminal', props: bandProps })
-  expect(await band.find({ text: /1 in no file/ })).toBeDefined()
-  expect(await band.find({ text: /not in file/ })).toBeUndefined()
-  expect((await band.find({ key: 'red' }))?.props.label).toBe('$3,382.50')
+  const label = String((await band.find({ key: 'band' }))?.props.label ?? '')
+  expect(label).toMatch(/○ 1 in no file: \$3,382\.50 +open$/)
+  expect(label).not.toMatch(/not in file/)
   await band.unmount()
 })
 
@@ -564,7 +564,7 @@ test('any text file counts, whatever its name; binary files and folders do not',
   expect(runs.map(scannedFiles)).toEqual([['/work/App.swift', '/work/Makefile', '/work/styles/site.css']])
 })
 
-test('a PDF card in the terminal has the page\'s lines under its picture; a text card has no picture', async ($, on) => {
+test('a PDF card is its status line and the picture, with enlarge; a text card has its lines and no picture', async ($, on) => {
   mock.clock(on)
   disk(on)
   on('fs.read', ($, e) => ({ value: e.as === 'bytes' ? bytes(e.path) : 'Call claim.' }))
@@ -572,7 +572,8 @@ test('a PDF card in the terminal has the page\'s lines under its picture; a text
     status: 'exact', page: 2, path: '/docs/paper.pdf', sha256: '9a1f00c2d4e5b6a7', matched: 'We observe a 12% improvement', crop: '/tmp/claim-8.png',
     lines: [41, 42], excerpt: [[40, 'explains how quickly training converges in most'], [41, 'settings. We observe a 12% improvement over the'], [42, 'baseline when the retrieval step is enabled. The'], [43, 'validation split explains the number']],
   }
-  on('process.run', ($, e) => ({
+  const ran: string[][] = []
+  on('process.run', ($, e) => (ran.push(e.argv), {
     value: { exitCode: 0, stdout: JSON.stringify(e.argv.at(-2) === 'paper.pdf' ? page : TEXT_AND_TABLE["we'll ship the beta on 14 March"]), stderr: '', isStdoutTruncated: false, isStderrTruncated: false },
   }))
   on('tool.call', () => ({ result: 'ok' }))
@@ -584,12 +585,17 @@ test('a PDF card in the terminal has the page\'s lines under its picture; a text
 
   const paneProps = { title: 'claim', isFocused: false, bodyColumns: 60, placement: 'dock', scroll: { offset: 0, bodyRows: 30, contentRows: 30 }, view: {} } as never
   const pane = await $.ui.mount({ plugin: 'claim', surface: 'terminal', component: 'Pane', requestId: 'claim', props: paneProps })
-  // The PDF: picture, then the page's lines, the hit lines tinted; the card still says page, never line.
+  // The PDF: the status line, then the picture and nothing under it: no page lines, no quote again.
   expect(await pane.find({ type: 'Image' })).toBeDefined()
   expect(await pane.find({ text: /paper\.pdf · page 2$/ })).toBeDefined()
   expect(await pane.find({ type: 'Text', text: /paper\.pdf · lines? \d/ })).toBeUndefined()
-  expect((await pane.find({ type: 'Text', text: /^settings\. We observe a 12% improvement/ }))?.props.backgroundColor).toBe('diffAdded')
-  expect((await pane.find({ type: 'Text', text: /^explains how quickly/ }))?.props.backgroundColor).toBeUndefined()
+  expect(await pane.find({ type: 'Text', text: /^settings\. We observe a 12% improvement/ })).toBeUndefined()
+  expect(await pane.find({ type: 'Text', text: /“We observe a 12% improvement”/ })).toBeUndefined()
+  // A terminal picture can't be clicked, so `enlarge` opens it in the computer's own viewer.
+  const zoom = await pane.find({ type: 'Button', label: 'enlarge' })
+  expect(zoom).toBeDefined()
+  await pane.press({ key: 'enlarge-/tmp/claim-8.png' })
+  expect(ran.at(-1)).toEqual(['open', '/tmp/claim-8.png'])
   // The markdown file: its lines and no picture, as before.
   await pane.press({ key: 'row-1' })
   expect(await pane.find({ text: /notes\.md · line 48/ })).toBeDefined()
@@ -599,9 +605,8 @@ test('a PDF card in the terminal has the page\'s lines under its picture; a text
 
   // Nothing is red, so the band names nothing.
   const band = await $.ui.mount({ plugin: 'claim', component: 'AbovePrompt', requestId: 'band', surface: 'terminal', props: { hasSurvey: false, isWorking: false, maxRows: 4, bodyColumns: 80, scroll: { offset: 0, bodyRows: 4, contentRows: 1 }, view: {} } as never })
-  expect(await band.find({ text: /2 in file/ })).toBeDefined()
-  expect(await band.find({ key: 'red' })).toBeUndefined()
-  expect(await band.find({ text: /: / })).toBeUndefined()
+  const label = String((await band.find({ key: 'band' }))?.props.label ?? '')
+  expect(label).toMatch(/^claim {2}● 2 in file +open$/)
   await band.unmount()
 
   // Desktop keeps the picture alone.
@@ -734,10 +739,10 @@ test('each claim call shows its card right under it in the conversation, and one
   expect(await unfolded_.find({ text: 'Malmo › note = host of the 2031 regional games' })).toBeUndefined()
   await unfolded_.unmount()
 
-  // The band: "claim", the count and "open" each open the pane in one press.
+  // The band is one button: a press anywhere on it opens the pane.
   const bandProps = { hasSurvey: false, isWorking: false, maxRows: 4, bodyColumns: 80, scroll: { offset: 0, bodyRows: 4, contentRows: 1 }, view: {} } as never
   const band = await $.ui.mount({ plugin: 'claim', component: 'AbovePrompt', requestId: 'band', surface: 'terminal', props: bandProps })
-  for (const key of ['open', 'claim', 'count-partial']) await band.press({ key })  // "open" first: once open it reads "esc close"
-  expect(opened).toEqual(['claim', 'claim', 'claim'])
+  await band.press({ key: 'band' })
+  expect(opened).toEqual(['claim'])
   await band.unmount()
 })
