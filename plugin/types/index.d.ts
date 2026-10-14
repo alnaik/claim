@@ -56,8 +56,10 @@ declare module 'claude-code' {
     claim: {
       // newest first
       records: ClaimRecord[]
-      // which record's card is open in the pane, as its index in records; -1 is the newest answer's first problem
+      // which record's card is open in the pane, as its index in records; -1 is the newest answer's first problem, -2 none
       selected: number
+      // the last answers' text, newest first, at most 20: cards go under their answer, and the pane follows its order
+      answers: { turn: string; text: string }[]
       // whether the pane is open, so the band's hint can say "esc close"
       isOpen: boolean
       // the files this session has read (Read, claim tool calls, @ attachments), newest first, at most 50

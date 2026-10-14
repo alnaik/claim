@@ -16,15 +16,15 @@ const files = atom({ plugin: 'claim', key: 'files' } as const, [])
 const opened = atom({ plugin: 'claim', key: 'opened' } as const, [])
 const turn = atom({ plugin: 'claim', key: 'turn' } as const, '')
 const unfolded = atom({ plugin: 'claim', key: 'unfolded' } as const, [])
+const answers = atom({ plugin: 'claim', key: 'answers' } as const, [])
 
-// The pane's order within an answer: what needs you first.
-const WORST: Look[] = ['not found', 'no file', 'partial', 'error', 'not searchable', 'exact']
+// The checks that need you: what the pane opens on first, and what the band names.
+const PROBLEMS: Look[] = ['not found', 'no file', 'partial', 'error']
 
 // The claim tool's two names: the plugin's own server, and one set up by hand.
 const TOOLS = ['mcp__plugin_claim_claim__claim', 'mcp__claim__claim'] as const
 
 const PANE = 'claim'
-const BAND = 'claim-band'  // the band's hover group: the pointer anywhere on it lights all of it
 
 export const register: Register = on => {
   let skill = ''
@@ -166,7 +166,10 @@ export const register: Register = on => {
 
   // When the main conversation's turn ends with an answer, check its quotes (stop 14).
   on('turn.complete', async ($, e, next) => {
-    if (e.agentId === undefined && e.reason === 'answer') await autoCheck($, e.answer, e.turnId)
+    if (e.agentId === undefined && e.reason === 'answer') {
+      await update($, answers, list => [{ turn: e.turnId, text: e.answer }, ...list.filter(a => a.turn !== e.turnId)].slice(0, 20))
+      await autoCheck($, e.answer, e.turnId)
+    }
     return next(e)
   }).catch(($, e, next) => next(e))
 
@@ -195,9 +198,9 @@ export const register: Register = on => {
   // first claim call or scan record until the next prompt starts a new answer, which hides it again.
   // So what it counts is always this answer, never an earlier one (those are in the pane, folded).
   // It shows "claim", a coloured dot and a count per status, the newest red quote (or figure in no
-  // file) named after its count, and "open". The line acts as one button: every piece of it is in one
-  // hover group (`BAND`), so the pointer anywhere lights the whole line, and every word presses the
-  // same way, opening the pane on the named quote's card (or the worst check, when nothing is named).
+  // file) named after its count, and "open". Every word on the line is a button, so one click anywhere
+  // opens the pane;
+  // pressing the named quote opens the pane on its card.
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const list = await read($, records)
     const current = await read($, turn)
@@ -215,67 +218,59 @@ export const register: Register = on => {
     const redLook = red >= 0 ? look(list[red] as ClaimRecord) : null
     const room = e.props.bodyColumns - 'claim '.length - counts.length - ': '.length - (open ? 'esc close' : 'open').length - 2
     const named = red >= 0 && room >= 12 ? shorten(list[red]?.quote ?? '', room) : null
-    const press = async () => { await update($, selected, () => red); await openPane($) }
-    const lit = { scope: BAND, inverse: true }
+    const press = () => openPane($)
     return (
       <Box width={e.props.bodyColumns} justifyContent="space-between">
         <Box>
-          <Button key="claim" plain label="claim " hover={lit} onPress={press} />
+          <Button key="claim" plain label="claim " onPress={press} />
           {present.map((status, i) => (
             <Box>
-              <Text color={LOOK[status].color} hover={lit}>{LOOK[status].dot} </Text>
-              <Button key={`count-${status}`} plain label={`${last.filter(r => look(r) === status).length} ${LOOK[status].count}${status === redLook && named ? ': ' : ''}`} hover={lit} onPress={press} />
+              <Text color={LOOK[status].color}>{LOOK[status].dot} </Text>
+              <Button key={`count-${status}`} plain label={`${last.filter(r => look(r) === status).length} ${LOOK[status].count}${status === redLook && named ? ': ' : ''}`} onPress={press} />
               {status === redLook && named ? (
-                <Button key="red" plain dimColor label={named} hover={lit} onPress={press} />
+                <Button key="red" plain dimColor label={named} onPress={async () => { await update($, selected, () => red); await openPane($) }} />
               ) : null}
-              {i < present.length - 1 ? <Text hover={lit}> · </Text> : null}
+              {i < present.length - 1 ? <Text> · </Text> : null}
             </Box>
           ))}
         </Box>
         {open ? (
-          <Text dimColor hover={lit}>esc close</Text>
+          <Text dimColor>esc close</Text>
         ) : (
-          <Button key="open" plain dimColor label="open" hover={lit} onPress={press} />
+          <Button key="open" plain dimColor label="open" onPress={press} />
         )}
       </Box>
     )
   })
 
-  // [stop 12] Under each claim call in the conversation, its card in place of the tool's own
-  // result (which is the picture and line made for the model): nothing to open to see it.
-  // Until the record is in (the call is still being checked) the engine draws its own.
-  on('ui.render', { component: 'ToolResult' }, async ($, e, next) => {
-    if (!(TOOLS as readonly string[]).includes(e.props.tool)) return next(e)
-    const r = (await read($, records)).find(one => one.call === e.props.tool_use_id)
-    if (!r) return next(e)
-    const width = Math.max(20, (e.viewport?.columns ?? 80) - 6)
-    return card($.ui.resolve(e), r, width, await picture($, e, r, width), () => enlarge($, r))
-  }).catch(($, e, next) => next(e))
-
-  // Claude Code folds a run of calls into one line (`Read 1 file, called plugin:claim:claim 5
-  // times`) and draws no ToolResult for any of them, so the hook above never runs. The group's
-  // line stays as the engine draws it, and each claim call in it gets its card underneath.
-  on('ui.render', { component: 'ToolGroup' }, async ($, e, next) => {
+  // [stop 12] Under Claude's answer, the card of each claim call it made for that answer, in the
+  // order the answer says them: the answer first, then where each part of it came from. The call
+  // itself stays as Claude Code draws it. An answer has no id here, so its last block is known by
+  // its text: the answer the turn ended with (kept at turn.complete) ends with it. Until the turn
+  // ends there is no answer to go under, and the cards come in then.
+  on('ui.render', { component: 'AssistantMessage' }, async ($, e, next) => {
     const drawn = await next(e)
-    if (e.props.isExpanded) return drawn  // each row is drawn on its own, with its own ToolResult
-    const ids = e.props.calls.filter(c => (TOOLS as readonly string[]).includes(c.tool)).map(c => c.tool_use_id)
+    const said = plain(e.props.text)
+    const answer = said.length > 0 ? (await read($, answers)).find(a => plain(a.text).endsWith(said)) : undefined
+    if (!answer) return drawn
     const list = await read($, records)
-    const found = ids.map(id => list.find(r => id !== undefined && r.call === id)).filter((r): r is ClaimRecord => r !== undefined)
-    if (found.length === 0) return drawn
+    const calls = inAnswer(list, answer.turn, answer.text).map(i => list[i] as ClaimRecord).filter(r => r.source === 'tool')
+    if (calls.length === 0) return drawn
     const ui = $.ui.resolve(e)
     const width = Math.max(20, (e.viewport?.columns ?? 80) - 6)
-    const cards = await Promise.all(found.map(async r => card(ui, r, width, await picture($, e, r, width), () => enlarge($, r))))
+    const cards = await Promise.all(calls.map(async r => card(ui, r, width, await picture($, e, r, width), () => enlarge($, r))))
     return (
       <ui.Box flexDirection="column">
         {drawn}
-        {cards.map(c => <ui.Box paddingLeft={2} flexDirection="column">{c}</ui.Box>)}
+        {cards.map(c => <ui.Box paddingLeft={2} marginTop={1} flexDirection="column">{c}</ui.Box>)}
       </ui.Box>
     )
   }).catch(($, e, next) => next(e))
 
-  // [stop 13] The pane: the newest answer's checks, worst first (not in the file, in no file,
-  // partly, then in the file), one line each with its place (`Hotel › Amount · D18`), and the chosen
-  // one's card open under its line: the first problem unless you press another line. A heading
+  // [stop 13] The pane: the newest answer's checks in the order the answer says them, one line
+  // each with its place (`Hotel › Amount · D18`), and the chosen one's card open under its line: the
+  // first problem unless you press another line. A press anywhere on a line opens its card, and
+  // a press on the open one closes it. A heading
   // says how many were checked and where they came from (claim calls, the end-of-turn scan).
   // Earlier answers follow, folded to one line each; pressing one unfolds it.
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
@@ -286,20 +281,22 @@ export const register: Register = on => {
     const width = e.props.bodyColumns
     const now = await $.clock.now()
     const turns = [...new Set(list.map(r => r.turn))]  // newest answer first
-    const worstFirst = (t: string) => list.map((_, i) => i).filter(i => list[i]?.turn === t)
-      .sort((a, b) => WORST.indexOf(look(list[a] as ClaimRecord)) - WORST.indexOf(look(list[b] as ClaimRecord)))
+    const said = await read($, answers)
+    const ordered = (t: string) => inAnswer(list, t, said.find(a => a.turn === t)?.text ?? '')
+    const first = ordered(turns[0] ?? '')
     const chosen = await read($, selected)
-    const shown = chosen >= 0 && chosen < list.length ? chosen : (worstFirst(turns[0] ?? '')[0] ?? 0)
+    const shown = chosen >= 0 && chosen < list.length ? chosen
+      : chosen === -2 ? -1 : (first.find(i => PROBLEMS.includes(look(list[i] as ClaimRecord))) ?? first[0] ?? 0)
     const open = [turns[0], list[shown]?.turn, ...(await read($, unfolded))]  // the answers whose lines show
-    const opened = list[shown] as ClaimRecord
-    const openCard = card(ui, opened, width - 2, await picture($, e, opened, width - 2), () => enlarge($, opened))
+    const opened = list[shown]
+    const openCard = opened ? card(ui, opened, width - 2, await picture($, e, opened, width - 2), () => enlarge($, opened)) : null
 
     const line = (i: number) => {
       const r = list[i] as ClaimRecord
       const place = `${spot(r)}${r.source === 'turn' ? ' · scan' : ''}`
       // The row acts as one button: its dot, quote and place light together and choose it alike.
       const lit = { scope: `claim-row-${i}`, inverse: true }
-      const choose = () => update($, selected, () => i)
+      const choose = () => update($, selected, () => (i === shown ? -2 : i))
       return (
         <Box flexDirection="column">
           <Box>
@@ -319,7 +316,7 @@ export const register: Register = on => {
           <Text bold>This answer</Text>
           <Text dimColor>  {newest.length} checked · {calls} from claim calls · {newest.length - calls} by the scan</Text>
         </Text>
-        {worstFirst(turns[0] ?? '').map(line)}
+        {first.map(line)}
         {turns.slice(1).map(t => {
           const group = list.filter(r => r.turn === t)
           const isOpen_ = open.includes(t)
@@ -331,7 +328,7 @@ export const register: Register = on => {
                 <Button key={`answer-${t}`} plain dimColor label={`${isOpen_ ? '▾' : '▸'} Earlier answer · ${ago(now - (group[0]?.time ?? now))}`} onPress={toggle} />
                 {answerCounts(ui, group)}
               </Box>
-              {isOpen_ ? worstFirst(t).map(line) : null}
+              {isOpen_ ? ordered(t).map(line) : null}
             </Box>
           )
         })}
@@ -527,4 +524,23 @@ async function enlarge($: EngineInterface, r: ClaimRecord) {
 async function openPane($: EngineInterface) {
   await $.ui.open({ id: PANE, title: 'claim', focus: true, closeOnEscape: true, columns: 72 })  // a fullscreen terminal docks it on the right
   await update($, isOpen, () => true)
+}
+
+// The indices of one answer's records in the order the answer says them: each by where its quote
+// (or its first words) is in the answer's text; one the answer never says (Claude checked it and
+// then wrote it otherwise) goes last; ties, and answers not yet kept, in the order they were made.
+function inAnswer(list: ClaimRecord[], turnId: string, answer: string): number[] {
+  const text = plain(answer)
+  const at = (r: ClaimRecord) => {
+    const quote = plain(r.quote)
+    const found = text.indexOf(quote) >= 0 ? text.indexOf(quote) : text.indexOf(quote.split(' ').slice(0, 5).join(' '))
+    return quote && found >= 0 ? found : Infinity
+  }
+  return list.map((_, i) => i).filter(i => list[i]?.turn === turnId)
+    .sort((a, b) => at(list[a] as ClaimRecord) - at(list[b] as ClaimRecord) || b - a)  // newest first in the list, so made first is the higher index
+}
+
+// Text as compared: no markdown marks or quotation marks, curly ones folded, one space, lower case.
+function plain(text: string): string {
+  return text.replace(/[*_`>#|]/g, ' ').replace(/[“”"‘’']/g, '').replace(/\s+/g, ' ').trim().toLowerCase()
 }

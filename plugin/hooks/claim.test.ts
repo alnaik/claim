@@ -586,6 +586,7 @@ test('a PDF card is its status line and the picture, with enlarge; a text card h
 
   const paneProps = { title: 'claim', isFocused: false, bodyColumns: 60, placement: 'dock', scroll: { offset: 0, bodyRows: 30, contentRows: 30 }, view: {} } as never
   const pane = await $.ui.mount({ plugin: 'claim', surface: 'terminal', component: 'Pane', requestId: 'claim', props: paneProps })
+  await pane.press({ key: 'row-0' })  // the PDF, checked second, so listed second
   // The PDF: the status line, then the picture and nothing under it: no page lines, no quote again.
   expect(await pane.find({ type: 'Image' })).toBeDefined()
   expect(await pane.find({ text: /paper\.pdf · page 2$/ })).toBeDefined()
@@ -597,6 +598,11 @@ test('a PDF card is its status line and the picture, with enlarge; a text card h
   expect(zoom).toBeDefined()
   await pane.press({ key: 'enlarge-/tmp/claim-8.png' })
   expect(ran.at(-1)).toEqual(['open', '/tmp/claim-8.png'])
+  // A press anywhere on the open line, its place included, closes its card; another opens it again.
+  await pane.press({ key: 'place-0' })
+  expect(await pane.find({ type: 'Image' })).toBeUndefined()
+  await pane.press({ key: 'place-0' })
+  expect(await pane.find({ type: 'Image' })).toBeDefined()
   // The markdown file: its lines and no picture, as before.
   await pane.press({ key: 'row-1' })
   expect(await pane.find({ text: /notes\.md · line 48/ })).toBeDefined()
@@ -697,49 +703,53 @@ test('a claim call takes the record claim\'s server left for it, and runs claim 
 // The sha256 of ["/work/report.pdf","margins stay stable",2], as the server names its file.
 const HANDED = '5215e2296656c9eac637462867c12b9cacbec3bc87b48b58a25f12a38938a948.json'
 
-test('each claim call shows its card right under it in the conversation, and one press anywhere on the band opens the pane', async ($, on) => {
+test('each claim call\'s card shows under Claude\'s answer, not under the call, once the answer is in', async ($, on) => {
   mock.clock(on)
   disk(on)
   const opened: string[] = []
   on('fs.read', ($, e) => ({ value: e.as === 'bytes' ? bytes(e.path) : 'Call claim.' }))
   on('process.run', ($, e) => ({
-    value: { exitCode: 0, stdout: JSON.stringify(TEXT_AND_TABLE[e.argv.at(-1) ?? '']), stderr: '', isStdoutTruncated: false, isStderrTruncated: false },
+    value: { exitCode: 0, stdout: e.argv.includes('claim-scan') ? '[]' : JSON.stringify(TEXT_AND_TABLE[e.argv.at(-1) ?? '']), stderr: '', isStdoutTruncated: false, isStderrTruncated: false },
   }))
   on('tool.call', () => ({ result: 'ok' }))
   on('ui.open', ($, e) => { opened.push(e.id); return { value: { isPlaced: true as const } } })
   on('command.register', ($, e) => ({ value: { command: e.name } }))
   on('session.start', ($, e) => ({ cwd: e.cwd }))
+  on('turn.start', ($, e) => ({ text: e.text, turnId: e.turnId }) as never)
+  on('turn.complete', ($, e) => ({ text: e.answer }))
   on('ui.render', ($, e) => {
     const { Text } = $.ui.resolve(e)
     return h(Text, {}, 'engine') as RenderElement
   })
   await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
+  await $.turn.start({ text: 'which city hosts the games?', turnId: 't1' } as never)
   await $.tool.call({ tool: 'mcp__claim__claim', tool_use_id: 'call-1', file: 'cities.csv', quote: 'host of the 2031 regional games' } as never)
 
-  const result = (id: string) => ({ plugin: 'claim', surface: 'terminal', component: 'ToolResult', requestId: id, viewport: { columns: 90, rows: 40 },
-    props: { tool_use_id: id, tool: 'mcp__claim__claim', output: 'the picture for the model', isErrored: false } }) as never
-  // Under the call: its own card, with the cell in words and the grid around it; not the engine's drawing.
-  const under = await $.ui.mount(result('call-1'))
-  expect(await under.find({ text: /^Partly in the file$/ })).toBeDefined()
-  expect(await under.find({ text: 'Malmo › note = host of the 2031 regional games' })).toBeDefined()
-  expect(await under.find({ text: 'engine' })).toBeUndefined()
+  // Under the call: Claude Code's own drawing, no card.
+  const under = await $.ui.mount({ plugin: 'claim', surface: 'terminal', component: 'ToolResult', requestId: 'call-1', viewport: { columns: 90, rows: 40 },
+    props: { tool_use_id: 'call-1', tool: 'mcp__claim__claim', output: 'the picture for the model', isErrored: false } } as never)
+  expect(await under.find({ text: 'engine' })).toBeDefined()
+  expect(await under.find({ text: /^Partly in the file$/ })).toBeUndefined()
   await under.unmount()
-  // A call claim has no record for (another tool's, or one still running) keeps the engine's drawing.
-  const other = await $.ui.mount(result('call-2'))
-  expect(await other.find({ text: 'engine' })).toBeDefined()
-  await other.unmount()
-  // Folded into a group line (`called claim 2 times, ran 1 shell command`): the line, then the claim call's card under it.
-  const call = (id: string, tool: string) => ({ tool_use_id: id, tool, input: {}, isRunning: false, isErrored: false, isInterrupted: false, output: '' })
-  const group = (isExpanded: boolean) => ({ plugin: 'claim', surface: 'terminal', component: 'ToolGroup', requestId: 'g', viewport: { columns: 90, rows: 40 },
-    props: { calls: [call('b-1', 'Bash'), call('call-1', 'mcp__claim__claim'), call('call-2', 'mcp__claim__claim')], isActive: false, isExpanded } }) as never
-  const folded = await $.ui.mount(group(false))
-  expect(await folded.find({ text: 'engine' })).toBeDefined()
-  expect(await folded.find({ text: 'Malmo › note = host of the 2031 regional games' })).toBeDefined()
-  await folded.unmount()
-  // Unfolded, each row has its own ToolResult, so the group adds nothing.
-  const unfolded_ = await $.ui.mount(group(true))
-  expect(await unfolded_.find({ text: 'Malmo › note = host of the 2031 regional games' })).toBeUndefined()
-  await unfolded_.unmount()
+
+  const message = (text: string) => ({ plugin: 'claim', surface: 'terminal', component: 'AssistantMessage', requestId: `m-${text.length}`, viewport: { columns: 90, rows: 40 },
+    props: { text, isFirstOfReply: true } }) as never
+  const reply = 'Malmo is the **host of the 2031 regional games**, per the sheet.'
+  // While the answer is still being written there is nothing to go under yet.
+  const writing = await $.ui.mount(message(reply))
+  expect(await writing.find({ text: /^Partly in the file$/ })).toBeUndefined()
+  await writing.unmount()
+  await $.turn.complete({ turnId: 't1', durationMs: 1000, isAborted: false, reason: 'answer', answer: `Checking the sheet.\n\n${reply}` })
+  // The answer's last block: the answer as Claude Code draws it, then the call's card under it.
+  const done = await $.ui.mount(message(reply))
+  expect(await done.find({ text: 'engine' })).toBeDefined()
+  expect(await done.find({ text: /^Partly in the file$/ })).toBeDefined()
+  expect(await done.find({ text: 'Malmo › note = host of the 2031 regional games' })).toBeDefined()
+  await done.unmount()
+  // An earlier block of the same answer gets no cards; they go under the end only.
+  const earlier = await $.ui.mount(message('Checking the sheet.'))
+  expect(await earlier.find({ text: /^Partly in the file$/ })).toBeUndefined()
+  await earlier.unmount()
 
   // The band: "claim", the count and "open" each open the pane in one press.
   const bandProps = { hasSurvey: false, isWorking: false, maxRows: 4, bodyColumns: 80, scroll: { offset: 0, bodyRows: 4, contentRows: 1 }, view: {} } as never
