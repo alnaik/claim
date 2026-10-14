@@ -19,7 +19,9 @@ server = MCPServer("claim")
 @server.tool(description=(
     "Show the source page for a quote, with the quote highlighted. Call this "
     "after citing any document so the user can visually verify the citation. "
-    "Pass the quote as you wrote it and the page number if you know it."
+    "Pass the quote as you wrote it and the page number if you know it. "
+    "claim runs on the user's computer, so `file` is a full path there (or a URL). "
+    "A file uploaded to the chat is not on that computer: ask the user for its path."
 ))
 def claim(file: str, quote: str, page: int | None = None) -> list:
     result = find_and_draw(file, quote, page)

@@ -87,6 +87,10 @@ def load(file, quote):
     name, sheet = (named[1], named[2]) if named else (str(file), None)
     path = Path(name).expanduser().absolute()
     if not path.exists():
+        # Claude Desktop's chat keeps an uploaded file on Anthropic's servers (/mnt/user-data/...), and a
+        # bare name has no folder: claim runs on this computer and can only open a path on it.
+        if name.startswith("/mnt/") or not Path(name).expanduser().is_absolute():
+            raise ValueError("not on this computer: an uploaded file can't be opened, ask for its path here")
         raise ValueError("file does not exist")
     digest = "web" if web else hashlib.sha256(path.read_bytes()).hexdigest()
     kind = path.suffix.lower()
