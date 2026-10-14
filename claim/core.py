@@ -141,8 +141,10 @@ def page_order(count, hint):
 
 # [stop 4] Look for the quote, page by page, and stop at the first hit.
 # First the whole quote (exact). If the agent reworded it, try its longest sentence,
-# then every run of 8 words in a row (partial). Each try walks the pages in order;
-# each page's text is pulled out once, and PyMuPDF is only asked for rectangles on a hit.
+# then every run of 8 words in a row (partial). A run that is found is widened word by
+# word while the page still has it, and the rest of the quote is searched the same way,
+# so every stretch of the quote on that page is lit, not just its first 8 words.
+# Each page's text is pulled out once, and PyMuPDF is only asked for rectangles on a hit.
 def search(doc, quote, hint):
     order = page_order(len(doc), hint)
     pages = {}  # page number -> (page, textpage, text), so each page's text is pulled out once
@@ -164,13 +166,33 @@ def search(doc, quote, hint):
         tries.append(("partial", sentence))
     words = quote.split()
     for i in range(len(words) - RUN + 1 if len(words) > RUN else 0):
-        tries.append(("partial", " ".join(words[i:i + RUN])))
+        tries.append(("partial", i))
     for status, needle in tries:
         for pno in order:
-            rects = find(pno, needle)
-            if rects:
-                return status, pno, rects, needle
+            if isinstance(needle, str):
+                rects = find(pno, needle)
+                if rects:
+                    return status, pno, rects, needle
+            elif find(pno, " ".join(words[needle:needle + RUN])):
+                stretches = widen(lambda a, b: find(pno, " ".join(words[a:b])), len(words), needle)
+                rects = merge_lines([r for a, b in stretches for r in find(pno, " ".join(words[a:b]))])
+                return status, pno, rects, " … ".join(" ".join(words[a:b]) for a, b in stretches)
     return "not found", order[0] if order else 0, [], None
+
+
+def widen(found, count, i):
+    """From a run found at word i: each stretch (start, end) of the quote the page has, in order."""
+    stretches = []
+    while i <= count - RUN:
+        if not found(i, i + RUN):
+            i += 1
+            continue
+        end = i + RUN
+        while end < count and found(i, end + 1):
+            end += 1
+        stretches.append((i, end))
+        i = end
+    return stretches
 
 
 # [stop 5] Find how the page itself spells the quote.

@@ -226,3 +226,8 @@
   quote: "The finance team signed off on the amount shown in the field below."
   expect: exact          # the picture must also show the red APPROVED stamp and the $4,200.00 field
   at: 1
+- file: fixtures/report.pdf
+  quote: "Management expects operating margins to remain broadly stable in the coming year."
+  page: 2
+  expect: partial        # first word changed: the whole rest is lit, not just its first 8 words
+  matched: "expects operating margins to remain broadly stable in the coming year."

@@ -32,8 +32,9 @@ def main():
         wrong_link = "link" in case and result.get("link") != case["link"]
         wrong_cells = "cells" in case and (result["excerpt"] or {}).get("cells") != case["cells"]
         wrong_header = "header" in case and (result["excerpt"] or {}).get("header") != case["header"]
+        wrong_matched = "matched" in case and result["matched"] != case["matched"]
         ok = (got == case["expect"] and not wrong_place and not wrong_lines and not wrong_sheet and not wrong_link
-              and not wrong_cells and not wrong_header)
+              and not wrong_cells and not wrong_header and not wrong_matched)
         passed += ok
         if got == "exact" and (case["expect"] != "exact" or wrong_place or wrong_cells):
             confident_wrong += 1
