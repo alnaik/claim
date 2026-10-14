@@ -60,6 +60,7 @@ are drawn from claim's real output, on the fixtures and on a Walmart 10-K:
 
 ![Quotes from two PDFs: one in the file, one partly, one not in the file](docs/claim-quotes.gif)
 ![A spreadsheet cell, lit in its row](docs/claim-spreadsheet.gif)
+![Figures from a filing: in the file (in millions, rounded), and worked out with the figures near them](docs/claim-figures.gif)
 
 In Claude Code each answer gets one line per claim under it, in the answer's order: the dot, the claim in
 Claude's words, and where it is; `auto` marks one claim checked by itself, not because Claude asked. The
