@@ -70,19 +70,20 @@ test('band and pane show what claim found', async ($, on) => {
   await $.tool.call({ tool: 'mcp__plugin_claim_claim__claim', file: 'report.pdf', quote: 'something else', page: 2 })
 
   const ui = await $.ui.mount({ ...band, surface: 'terminal', props: bandProps })
-  // The whole band is one button: the counts, the not-found quote named after them, and "open".
-  const bandLabel = async () => String((await ui.find({ key: 'band' }))?.props.label ?? '')
-  expect(await bandLabel()).toMatch(/^claim {2}● 1 in file · ● 1 not in file · ● 1 could not run: revenue tripled… +open$/)  // cut to an 80-column line
-  expect((await bandLabel()).length).toBe(80)
-  // One press opens the pane on the worst check, and the hint says how to close it; another closes it.
-  await ui.press({ key: 'band' })
-  expect(await bandLabel()).toMatch(/esc close$/)
+  expect(await ui.find({ text: /1 in file/ })).toBeDefined()
+  expect(await ui.find({ text: /1 not in file/ })).toBeDefined()
+  expect(await ui.find({ text: /1 could not run/ })).toBeDefined()
+  expect((await ui.find({ key: 'open' }))?.props.label).toBe('open')
+  // The not-found count names its quote; pressing the name opens the pane on that card.
+  expect((await ui.find({ key: 'red' }))?.props.label).toBe('revenue tripled…')  // cut to the room left on an 80-column line
+  // Pressing the band opens the pane, and the hint says how to close it.
+  await ui.press({ key: 'open' })
+  expect(await ui.find({ text: 'esc close' })).toBeDefined()
+  await ui.press({ key: 'red' })
   const landed = await $.ui.mount({ plugin: 'claim', surface: 'terminal', component: 'Pane', requestId: 'claim', props: { title: 'claim', isFocused: false, bodyColumns: 60, placement: 'dock', scroll: { offset: 0, bodyRows: 30, contentRows: 30 }, view: {} } as never })
   expect(await landed.find({ text: /^Not in the file$/ })).toBeDefined()
   await landed.press({ key: 'row-0' })
   await landed.unmount()
-  await ui.press({ key: 'band' })
-  expect(await bandLabel()).toMatch(/ open$/)
   await ui.unmount()
 
   const paneProps = { title: 'claim', isFocused: false, bodyColumns: 60, placement: 'dock', scroll: { offset: 0, bodyRows: 30, contentRows: 30 }, view: {} } as never
@@ -263,7 +264,7 @@ test('quotes in the answer are checked against the files the session read', asyn
   // The two the scan found say so after their place; the tool's does not. The worst comes first, its card open.
   const paneProps = { title: 'claim', isFocused: false, bodyColumns: 80, placement: 'dock', scroll: { offset: 0, bodyRows: 30, contentRows: 30 }, view: {} } as never
   const pane = await $.ui.mount({ plugin: 'claim', surface: 'terminal', component: 'Pane', requestId: 'claim', props: paneProps })
-  expect(await pane.findAll({ type: 'Text', text: / · scan$/ })).toHaveLength(2)
+  expect((await pane.findAll({ type: 'Button' })).filter(b => / · scan$/.test(String(b.props.label)))).toHaveLength(2)
   expect(await pane.find({ text: /^ {2}3 checked · 1 from claim calls · 2 by the scan$/ })).toBeDefined()
   expect(await pane.find({ text: /^Not in the file$/ })).toBeDefined()
   await pane.press({ key: 'row-1' })
@@ -437,7 +438,7 @@ test('the pane shows each answer\'s quotes together under one heading', async ($
   // Pressing the earlier answer unfolds it: its two lines, the tool's and the scan's.
   await pane.press({ key: 'answer-t1' })
   expect((await lines()).some(l => /^Operating margins stay stable/.test(l))).toBe(true)
-  expect(await pane.find({ type: 'Text', text: /a\.pdf · page 1 · scan$/ })).toBeDefined()
+  expect((await pane.findAll({ type: 'Button' })).some(b => /a\.pdf · page 1 · scan$/.test(String(b.props.label)))).toBe(true)
   await pane.unmount()
 })
 
@@ -511,9 +512,9 @@ test('the whole answer goes to the scan as written, and a figure from nowhere sa
   // With no red quote, the band names the figure after its own count.
   const bandProps = { hasSurvey: false, isWorking: false, maxRows: 4, bodyColumns: 80, scroll: { offset: 0, bodyRows: 4, contentRows: 1 }, view: {} } as never
   const band = await $.ui.mount({ plugin: 'claim', component: 'AbovePrompt', requestId: 'band', surface: 'terminal', props: bandProps })
-  const label = String((await band.find({ key: 'band' }))?.props.label ?? '')
-  expect(label).toMatch(/○ 1 in no file: \$3,382\.50 +open$/)
-  expect(label).not.toMatch(/not in file/)
+  expect(await band.find({ text: /1 in no file/ })).toBeDefined()
+  expect(await band.find({ text: /not in file/ })).toBeUndefined()
+  expect((await band.find({ key: 'red' }))?.props.label).toBe('$3,382.50')
   await band.unmount()
 })
 
@@ -605,8 +606,9 @@ test('a PDF card is its status line and the picture, with enlarge; a text card h
 
   // Nothing is red, so the band names nothing.
   const band = await $.ui.mount({ plugin: 'claim', component: 'AbovePrompt', requestId: 'band', surface: 'terminal', props: { hasSurvey: false, isWorking: false, maxRows: 4, bodyColumns: 80, scroll: { offset: 0, bodyRows: 4, contentRows: 1 }, view: {} } as never })
-  const label = String((await band.find({ key: 'band' }))?.props.label ?? '')
-  expect(label).toMatch(/^claim {2}● 2 in file +open$/)
+  expect(await band.find({ text: /2 in file/ })).toBeDefined()
+  expect(await band.find({ key: 'red' })).toBeUndefined()
+  expect(await band.find({ text: /: / })).toBeUndefined()
   await band.unmount()
 
   // Desktop keeps the picture alone.
@@ -739,10 +741,10 @@ test('each claim call shows its card right under it in the conversation, and one
   expect(await unfolded_.find({ text: 'Malmo › note = host of the 2031 regional games' })).toBeUndefined()
   await unfolded_.unmount()
 
-  // The band is one button: a press anywhere on it opens the pane.
+  // The band: "claim", the count and "open" each open the pane in one press.
   const bandProps = { hasSurvey: false, isWorking: false, maxRows: 4, bodyColumns: 80, scroll: { offset: 0, bodyRows: 4, contentRows: 1 }, view: {} } as never
   const band = await $.ui.mount({ plugin: 'claim', component: 'AbovePrompt', requestId: 'band', surface: 'terminal', props: bandProps })
-  await band.press({ key: 'band' })
-  expect(opened).toEqual(['claim'])
+  for (const key of ['open', 'claim', 'count-partial']) await band.press({ key })  // "open" first: once open it reads "esc close"
+  expect(opened).toEqual(['claim', 'claim', 'claim'])
   await band.unmount()
 })

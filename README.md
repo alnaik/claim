@@ -64,7 +64,7 @@ The card under the call, then the scan catching a figure that is in no file.
 In Claude Code each claim call's card shows right under it: status and place, then the highlighted
 lines close up (for a spreadsheet, the matched cell lit); `enlarge` opens the picture full size. While an
 answer has checks, a line above the prompt counts them, its scan included; the next prompt hides it. A
-click anywhere on it, `c` or `/claim` opens the pane, last answer first, problems on top. `/claim
+click anywhere on it or `/claim` opens the pane, last answer first, problems on top. `/claim
 path/to/file` adds a file the plugin didn't notice you read. A claim call on a file the session opened
 runs without a permission prompt; any other file asks.
 

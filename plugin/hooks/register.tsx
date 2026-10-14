@@ -24,6 +24,7 @@ const WORST: Look[] = ['not found', 'no file', 'partial', 'error', 'not searchab
 const TOOLS = ['mcp__plugin_claim_claim__claim', 'mcp__claim__claim'] as const
 
 const PANE = 'claim'
+const BAND = 'claim-band'  // the band's hover group: the pointer anywhere on it lights all of it
 
 export const register: Register = on => {
   let skill = ''
@@ -193,35 +194,51 @@ export const register: Register = on => {
   // [stop 11] The band above the prompt, shown only while the current answer has checks: from its
   // first claim call or scan record until the next prompt starts a new answer, which hides it again.
   // So what it counts is always this answer, never an earlier one (those are in the pane, folded).
-  // It reads "claim", a dot and a count per status, the newest red quote (or figure in no file)
-  // named after its count, and "open". The whole line is one button: a press anywhere opens the
-  // pane on the worst check first (the named one), or closes it when it is open; `c` does the same.
+  // It shows "claim", a coloured dot and a count per status, the newest red quote (or figure in no
+  // file) named after its count, and "open". The line acts as one button: every piece of it is in one
+  // hover group (`BAND`), so the pointer anywhere lights the whole line, and every word presses the
+  // same way, opening the pane on the named quote's card (or the worst check, when nothing is named).
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const list = await read($, records)
     const current = await read($, turn)
     const last = list.filter(r => r.turn === current)
     if (last.length === 0 || e.props.hasSurvey) return next(e)
     const open = await read($, isOpen)
-    const { Button } = $.ui.resolve(e)
+    const { Box, Text, Button } = $.ui.resolve(e)
     const present = (Object.keys(LOOK) as Look[]).filter(s => last.some(r => look(r) === s))
-    const counts = present.map(s => `${LOOK[s].dot} ${last.filter(r => look(r) === s).length} ${LOOK[s].count}`).join(' · ')
-    // The item named after the counts: the answer's newest red quote, or if none, its newest figure in no file.
-    const red = last.find(r => look(r) === 'not found') ?? last.find(r => look(r) === 'no file')
-    const hint = open ? 'esc close' : 'open'
-    const room = e.props.bodyColumns - 'claim  '.length - counts.length - ': '.length - hint.length - 2
-    const named = red && room >= 12 ? `: ${shorten(red.quote, room)}` : ''
-    const left = `claim  ${counts}${named}`
-    const label = `${left}${' '.repeat(Math.max(1, e.props.bodyColumns - left.length - hint.length))}${hint}`
-    const press = async () => {
-      if (open) {
-        await $.ui.close({ id: PANE })
-        await update($, isOpen, () => false)
-      } else {
-        await update($, selected, () => -1)  // the pane opens on the worst check of this answer
-        await openPane($)
-      }
-    }
-    return <Button key="band" plain hotkey="c" label={label} onPress={press} />
+    const counts = present.map(s => `● ${last.filter(r => look(r) === s).length} ${LOOK[s].count}`).join(' · ')
+    // The item named after its count: the answer's newest red quote, or if none, its newest figure in no file.
+    // An index into the whole list, since that is what `selected` points into.
+    const lastRed = (status: Look) => list.findIndex(r => r.turn === current && look(r) === status)
+    const quoteRed = lastRed('not found')
+    const red = quoteRed >= 0 ? quoteRed : lastRed('no file')
+    const redLook = red >= 0 ? look(list[red] as ClaimRecord) : null
+    const room = e.props.bodyColumns - 'claim '.length - counts.length - ': '.length - (open ? 'esc close' : 'open').length - 2
+    const named = red >= 0 && room >= 12 ? shorten(list[red]?.quote ?? '', room) : null
+    const press = async () => { await update($, selected, () => red); await openPane($) }
+    const lit = { scope: BAND, inverse: true }
+    return (
+      <Box width={e.props.bodyColumns} justifyContent="space-between">
+        <Box>
+          <Button key="claim" plain label="claim " hover={lit} onPress={press} />
+          {present.map((status, i) => (
+            <Box>
+              <Text color={LOOK[status].color} hover={lit}>{LOOK[status].dot} </Text>
+              <Button key={`count-${status}`} plain label={`${last.filter(r => look(r) === status).length} ${LOOK[status].count}${status === redLook && named ? ': ' : ''}`} hover={lit} onPress={press} />
+              {status === redLook && named ? (
+                <Button key="red" plain dimColor label={named} hover={lit} onPress={press} />
+              ) : null}
+              {i < present.length - 1 ? <Text hover={lit}> · </Text> : null}
+            </Box>
+          ))}
+        </Box>
+        {open ? (
+          <Text dimColor hover={lit}>esc close</Text>
+        ) : (
+          <Button key="open" plain dimColor label="open" hover={lit} onPress={press} />
+        )}
+      </Box>
+    )
   })
 
   // [stop 12] Under each claim call in the conversation, its card in place of the tool's own
@@ -280,12 +297,15 @@ export const register: Register = on => {
     const line = (i: number) => {
       const r = list[i] as ClaimRecord
       const place = `${spot(r)}${r.source === 'turn' ? ' · scan' : ''}`
+      // The row acts as one button: its dot, quote and place light together and choose it alike.
+      const lit = { scope: `claim-row-${i}`, inverse: true }
+      const choose = () => update($, selected, () => i)
       return (
         <Box flexDirection="column">
           <Box>
-            <Text color={LOOK[look(r)].color}>{LOOK[look(r)].dot} </Text>
-            <Button key={`row-${i}`} plain dimColor={i !== shown} label={shorten(r.quote, Math.max(12, width - place.length - 5))} onPress={() => update($, selected, () => i)} />
-            <Text dimColor>  {place}</Text>
+            <Text color={LOOK[look(r)].color} hover={lit}>{LOOK[look(r)].dot} </Text>
+            <Button key={`row-${i}`} plain dimColor={i !== shown} label={shorten(r.quote, Math.max(12, width - place.length - 5))} hover={lit} onPress={choose} />
+            <Button key={`place-${i}`} plain dimColor label={`  ${place}`} hover={lit} onPress={choose} />
           </Box>
           {i === shown ? <Box paddingLeft={2} flexDirection="column">{openCard}<Text> </Text></Box> : null}
         </Box>
