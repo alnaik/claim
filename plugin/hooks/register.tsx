@@ -401,7 +401,7 @@ async function handedOff($: EngineInterface, call: [string, string, number | nul
 // One object of claim's JSON (from `claim --json`, the server's hand-off, or one entry of
 // `claim-scan`): the record's fields as claim prints them, the newer ones possibly missing.
 type ClaimJson = Pick<ClaimRecord, 'status' | 'path' | 'sha256' | 'page' | 'lines' | 'matched' | 'crop' | 'excerpt'>
-  & Partial<Pick<ClaimRecord, 'crop1x' | 'size' | 'sheet' | 'link' | 'kind' | 'places'>> & { quote?: string }
+  & Partial<Pick<ClaimRecord, 'crop1x' | 'size' | 'sheet' | 'link' | 'kind' | 'places' | 'formula' | 'rounded'>> & { quote?: string }
 
 // One object of claim's JSON as a record.
 function record(out: ClaimJson, quote: string, source: ClaimRecord['source'], turnId: string, time: number): ClaimRecord {
@@ -409,6 +409,7 @@ function record(out: ClaimJson, quote: string, source: ClaimRecord['source'], tu
     status: out.status, path: out.path, sha256: out.sha256, page: out.page, lines: out.lines,
     matched: out.matched, quote, crop: out.crop, crop1x: out.crop1x ?? null, size: out.size ?? null, excerpt: out.excerpt, sheet: out.sheet ?? null,
     link: out.link ?? null, kind: out.kind ?? 'quote', places: out.places ?? 1, time, source, turn: turnId,
+    ...(out.formula ? { formula: out.formula } : {}), ...(out.rounded ? { rounded: out.rounded } : {}),
   }
 }
 

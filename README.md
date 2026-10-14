@@ -8,8 +8,10 @@ markdown files, CSV/TSV/XLSX tables, images, web pages, and links to files. In
 Claude Code it comes as a plugin that also scans every answer against the files
 the session read: every run of eight words the answer shares with a file, and
 every figure in it, is checked whether or not the model called the tool or used
-quotation marks; a figure in no file is marked "in no file". The point is to
-make any citation checkable at a glance, without trusting the model's say-so.
+quotation marks. $22,270M matches 22,270 on a page "in millions"; a figure one step (a sum,
+ratio, average or growth) makes from figures the files hold is "worked out", with its formula;
+any other is "in no file". The point is to make any citation checkable at a glance, without
+trusting the model's say-so.
 
 ## Install
 
@@ -57,9 +59,7 @@ year, then show me the source."* The AI quotes the document, calls `claim`, and
 gets this picture plus the line `exact · report.pdf · page 2 · 84e3e316` (the
 end is the start of the file's fingerprint):
 
-![claim in Claude Code: a card under the call, then the scan flags a figure in no file](fixtures/out/demo.gif)
-
-The card under the call, then the scan catching a figure that is in no file.
+![claim in Claude Code: the checks under an answer](fixtures/out/demo.gif)
 
 In Claude Code each answer gets one line per claim under it, in the answer's order: the dot, the claim in
 Claude's words, and where it is; `auto` marks one claim checked by itself, not because Claude asked. The

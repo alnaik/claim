@@ -7,17 +7,19 @@ answer ends; the model's own claim calls are extra, not the gate.
 import re
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
+from typing import NamedTuple
 
-from claim import cache, core
+from claim import cache, core, sums
 from claim.sources import image, table, text
 
-MAX_SPANS, MAX_FIGURES = 10, 10
+MAX_SPANS, MAX_FIGURES = 10, 40
 EDGE = "\"'.,;:!?()[]{}-"  # punctuation at a word's edges that doesn't change the word
 NOWHERE = {"status": "not found", "page": None, "path": "", "sha256": None, "matched": None, "lines": None,
            "excerpt": None, "sheet": None, "link": None, "png": None, "crop": None, "places": 0}  # a figure in no file
 NUMBER = re.compile(r"^(-?)[$€£]?-?(\d[\d,]*(?:\.\d+)?)(k|mn|m|bn|b)?(%?)$")  # 4.2m, 1.5bn, 300k, -5.2%
 SIZES = {"k": 3, "m": 6, "mn": 6, "b": 9, "bn": 9}
 WORDS = {"thousand": "k", "million": "m", "billion": "b", "bn": "b", "mn": "m", "percent": "%", "%": "%"}  # "4.5 billion"
+UNITS = re.compile(r"\bin (thousands|millions|billions)\b", re.IGNORECASE)  # a table's "(Amounts in millions)"
 
 
 # [stop 16] The scan. The answer's words are laid out once, then each file's words are
@@ -56,11 +58,20 @@ def scan(answer, files):
             piece_keys = [k for k in piece_keys if k]
             for i in range(len(piece_keys) - core.RUN + 1):
                 runs.setdefault(tuple(piece_keys[i:i + core.RUN]), page)
-            found = figures_in(piece_keys)
-            for _, figure_, spelling in found:
+            found = [(f.figure, f.spelling) for f in figures_in(piece_keys)]
+            # A page that says its amounts are "in millions" holds 22,270 as $22,270M: each plain
+            # number on it also stands for itself times that unit.
+            stated = None if rows else UNITS.search(piece)
+            if stated:
+                scale = {"thousands": 3, "millions": 6, "billions": 9}[stated[1].lower()]
+                for k in piece_keys:
+                    m = NUMBER.match(k)
+                    if m and not m[3] and not m[4]:
+                        found.append((f"{Decimal(m[1] + m[2].replace(',', '')).scaleb(scale).normalize():f}", k))
+            for figure_, spelling in found:
                 if figure_ not in figures:
                     figures[figure_] = (file, spelling, page)  # the file's own spelling, so claim() finds it
-            for figure_ in {f for _, f, _ in found}:  # a page or row counts once
+            for figure_ in {f for f, _ in found}:  # a page or row counts once
                 places[figure_] = places.get(figure_, 0) + 1
         start = None
         for i in range(len(keys) - core.RUN + 1):
@@ -79,18 +90,38 @@ def scan(answer, files):
     for file, a, b, page in sorted(spans, key=lambda s: s[1])[:MAX_SPANS]:
         quote = text[words[a][1]:words[b - 1][2]].strip(EDGE + " ")  # the answer's own comma at the cut
         results.append({**core.claim(file, quote, page), "quote": quote, "kind": "quote", "places": 1})
-    seen = set()
-    for i, figure_, k in figures_in(keys):
-        if figure_ in seen or i in covered:
+    # [stop 17] Figures. One a file holds is drawn where it first is. One written short ($284.7B)
+    # also counts when a file holds it in full to that last digit (284,668 in millions), and says
+    # so. One in no file that one simple step makes from figures the answer gives and the files
+    # hold is "worked out", with its formula (sums.py); any other is in no file.
+    seen, held, missing = set(), {}, []  # held: answer word index -> (value, the answer's spelling), for sums.py
+    for f in figures_in(keys):
+        shown = text[words[f.at][1]:words[f.at + f.width - 1][2]].strip(EDGE.replace("-", "") + " ")  # as the answer writes it, sign kept
+        hit = figures.get(f.figure) or (f.size and nearest(f, figures))
+        if hit:
+            held[f.at] = (Decimal(f.figure), shown)
+        if f.figure in seen or f.at in covered:
             continue
-        seen.add(figure_)
+        seen.add(f.figure)
         if len(seen) > MAX_FIGURES:
             break
-        if figure_ in figures:
-            file, spelling, page = figures[figure_]
-            results.append({**core.claim(file, spelling, page), "quote": k, "kind": "figure", "places": places[figure_]})
-        elif files:  # in no file: say so, with no file and no picture, since there is nothing to show
-            results.append({**NOWHERE, "quote": k, "kind": "figure", "text": f"not found · {k} is in none of the files"})
+        if hit:
+            file, spelling, page = hit
+            rounded = {"rounded": spelling} if f.figure not in figures else {}
+            results.append({**core.claim(file, spelling, page), "quote": shown, "kind": "figure", "places": places.get(f.figure, 1), **rounded})
+        elif files:
+            missing.append((f, shown))
+    for _ in range(2):  # twice, so a figure made from one worked out first is found too
+        for f, shown in [m for m in missing if m[0].at not in held]:
+            step = sums.worked_out(f.at, Decimal(f.figure), sums.unit(f.digits, f.size, f.percent), held)
+            if step:
+                held[f.at] = (Decimal(f.figure), shown)
+                inputs = [held[i][1] for i in step[1]]
+                results.append({**NOWHERE, "status": "worked out", "quote": shown, "kind": "figure", "formula": step[0],
+                                "inputs": inputs, "text": f"worked out · {shown} = {step[0]}"})
+    for f, shown in missing:
+        if f.at not in held:  # in no file: say so, with no file and no picture, since there is nothing to show
+            results.append({**NOWHERE, "quote": shown, "kind": "figure", "text": f"not found · {shown} is in none of the files"})
     return results
 
 
@@ -114,16 +145,37 @@ def key(word):
     return k
 
 
+class Figure(NamedTuple):
+    at: int          # the answer word it starts at
+    width: int       # 1, or 2 for a size or percent written as the next word ("4.5 billion")
+    figure: str      # figure(), the one spelling of its value
+    spelling: str    # as compared (lower case), what claim() is asked to find
+    digits: str      # as written, for the last digit it shows
+    size: int        # its size as a power of ten: 6 for m and million
+    percent: bool
+
+
 def figures_in(keys):
-    """Every figure in a list of words, as (word index, figure, spelling). A size or percent written
-    as the next word belongs to the number: "4.5 billion" is 4.5b, and its spelling takes both words."""
+    """Every figure in a list of words. A size or percent written as the next word belongs to the
+    number: "4.5 billion" is 4.5b, and its spelling takes both words."""
     found = []
     for i, k in enumerate(keys):
-        after = WORDS.get(keys[i + 1]) if i + 1 < len(keys) and NUMBER.match(k) and not NUMBER.match(k)[3] and not k.endswith("%") else None
+        m = NUMBER.match(k)
+        after = WORDS.get(keys[i + 1]) if i + 1 < len(keys) and m and not m[3] and not m[4] else None
         figure_ = figure(k + after) if after else figure(k)
-        if figure_:
-            found.append((i, figure_, f"{k} {keys[i + 1]}" if after else k))
+        if figure_ and m:
+            size = SIZES.get(m[3] or (after if after != "%" else "") or "", 0)
+            found.append(Figure(i, 2 if after else 1, figure_, f"{k} {keys[i + 1]}" if after else k,
+                                m[2], size, bool(m[4]) or after == "%"))
     return found
+
+
+def nearest(f, figures):
+    """For a figure written short ($284.7B): a figure the files hold that rounds to it, to the last
+    digit it shows (284,668 in millions is $284.7B), as (file, spelling, page). None if none does."""
+    value, half = Decimal(f.figure), sums.unit(f.digits, f.size, f.percent) / 2
+    near = [(abs(Decimal(k) - value), hit) for k, hit in figures.items() if abs(Decimal(k) - value) <= half]
+    return min(near, key=lambda n: n[0])[1] if near else None
 
 
 def figure(k):

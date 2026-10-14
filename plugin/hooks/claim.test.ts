@@ -771,3 +771,36 @@ test('each claim call\'s card shows under Claude\'s answer, not under the call, 
   expect(opened).toEqual(['claim', 'claim', 'claim'])
   await band.unmount()
 })
+
+test('a figure worked out from figures in the files says how, and one written short says what it rounds', async ($, on) => {
+  mock.clock(on)
+  disk(on)
+  on('fs.read', ($, e) => ({ value: e.as === 'bytes' ? bytes(e.path) : 'Call claim.' }))
+  const held = { ...TEXT_AND_TABLE["we'll ship the beta on 14 March"], path: '/work/filing.pdf', page: 77, lines: null, excerpt: null }
+  const scan = [
+    { ...held, quote: '$284.7B', kind: 'figure', rounded: '284,668' },
+    { status: 'worked out', page: null, path: '', sha256: null, matched: null, lines: null, excerpt: null, crop: null, quote: '$95,315M', kind: 'figure', formula: '($99,617M + $91,013M) ÷ 2' },
+  ]
+  on('process.run', () => ({ value: { exitCode: 0, stdout: JSON.stringify(scan), stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }))
+  on('tool.call', () => ({ result: 'ok' }))
+  on('turn.start', ($, e) => ({ text: e.text, turnId: e.turnId }) as never)
+  on('turn.complete', ($, e) => ({ text: e.answer }))
+  on('command.register', ($, e) => ({ value: { command: e.name } }))
+  on('session.start', ($, e) => ({ cwd: e.cwd }))
+  await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
+  await $.turn.start({ text: 'what is the average equity?', turnId: 't1' } as never)
+  await $.tool.call({ tool: 'Read', file_path: '/work/filing.pdf' })
+  await $.turn.complete({ turnId: 't1', durationMs: 1000, isAborted: false, reason: 'answer', answer: 'Assets were $284.7B, and average equity $95,315M.' })
+  const paneProps = { title: 'claim', isFocused: false, bodyColumns: 100, placement: 'dock', scroll: { offset: 0, bodyRows: 30, contentRows: 30 }, view: {} } as never
+  const pane = await $.ui.mount({ plugin: 'claim', surface: 'terminal', component: 'Pane', requestId: 'claim', props: paneProps })
+  const labels = async () => (await pane.findAll({ type: 'Button' })).map(b => String(b.props.label))
+  // In the answer's order: the rounded figure, then the worked-out one, each saying how.
+  expect((await labels()).filter(l => /^ {2}/.test(l))).toEqual(['  filing.pdf · page 77 · rounded from 284,668 · auto', '  = ($99,617M + $91,013M) ÷ 2 · auto'])
+  await pane.press({ key: `place-0` })  // the newest record, the worked-out figure
+  expect(await pane.find({ text: /^Worked out$/ })).toBeDefined()
+  expect(await pane.find({ text: /^No file has this figure, but its figures are in the files/ })).toBeDefined()
+  await pane.unmount()
+  const band = await $.ui.mount({ plugin: 'claim', component: 'AbovePrompt', requestId: 'band', surface: 'terminal', props: { hasSurvey: false, isWorking: false, maxRows: 4, bodyColumns: 80, scroll: { offset: 0, bodyRows: 4, contentRows: 1 }, view: {} } as never })
+  expect(await band.find({ text: /1 worked out/ })).toBeDefined()
+  await band.unmount()
+})

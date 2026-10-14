@@ -54,8 +54,18 @@
   answer: |
     Revenue was 4.5B, sales were 4.5bn, growth was 4.5 percent, costs were $2,100,000,000, and margin was 4.5.
   find:
-    - [figure, exact, "4.5b"]               # 4.5B is the 4.5 billion in the file, never the 4.5%
+    - [figure, exact, "4.5B"]               # 4.5B is the 4.5 billion in the file, never the 4.5%
     - [figure, exact, "4.5 percent"]        # a percent written as a word is the 4.5%
     - [figure, exact, "$2,100,000,000"]     # the $2.1B in the file, written out
     - [figure, not found, "4.5"]            # a bare 4.5 is neither 4.5% nor 4.5 billion
   skip: ["4.5bn"]                           # the same figure as 4.5B, reported once
+- files: [fixtures/filing.md]
+  answer: |
+    Net income was $21,893M on average equity of $95,315M (from $99,617M and $91,013M), a return of about 23.0%. Assets were $284.7B. Revenue was $500M.
+  find:
+    - [figure, exact, "$21,893M"]           # the file says 21,893 under "(Amounts in millions)"
+    - [figure, exact, "$284.7B"]            # written short: 284,668 in millions, to the tenth of a billion
+    - [figure, worked out, "$95,315M"]      # the average of two figures the file holds
+    - [figure, worked out, "23.0%"]         # made from a held figure and a worked-out one
+    - [figure, not found, "$500M"]          # in no file, and no step makes it
+  skip: []

@@ -317,7 +317,16 @@ def units():
         "Costs were $2.1B, and headcount reached 3,000.\n")
 
 
+def filing():
+    """A statement whose amounts are in millions, as a 10-K writes them: the numbers are bare."""
+    Path(HERE / "filing.md").write_text(
+        "# Consolidated statement (Amounts in millions)\n\n"
+        "Net income attributable to shareholders 21,893\n"
+        "Total shareholders' equity 99,617 at year-end and 91,013 a year earlier\n"
+        "Total assets 284,668\n")
+
+
 if __name__ == "__main__":
     paper(); contract(); report(); hyphen(); pagebreak(); curly(); scanned(); notes(); tables(); photo()
-    stamped(); workbook(); formats(); titled(); units()
+    stamped(); workbook(); formats(); titled(); units(); filing()
     print("fixtures written")

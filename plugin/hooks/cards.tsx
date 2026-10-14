@@ -17,6 +17,8 @@ export const LOOK = {
   partial: { word: 'Partly in the file', count: 'partly', color: 'warning', dot: '●' },
   'not found': { word: 'Not in the file', count: 'not in file', color: 'error', dot: '●' },
   'no file': { word: 'In no file', count: 'in no file', color: 'warning', dot: '○' },
+  // Not in a file itself, but one step makes it from figures that are: green, hollow, since the sum is claim's.
+  'worked out': { word: 'Worked out', count: 'worked out', color: 'success', dot: '○' },
   'not searchable': { word: 'Not searchable', count: 'not searchable', color: 'inactive', dot: '●' },
   error: { word: 'claim could not run', count: 'could not run', color: 'inactive', dot: '●' },
 } as const
@@ -35,6 +37,7 @@ const HELP = {
   // The scan looks in the ten files read most recently, so a figure from an older one is reported this way too.
   'no file': 'This figure is in none of the files checked (the ten read most recently). If it was computed, check the rows it rests on.',
   'not searchable': 'Images have no text to search.',
+  'worked out': 'No file has this figure, but its figures are in the files and claim redid the step.',
   error: null,
 } as const
 
@@ -200,6 +203,7 @@ export function ago(ms: number): string {
 
 // Where the record is, in a few words: file, sheet, then the line, cell, row or page.
 export function where(r: ClaimRecord): string {
+  if (r.formula) return `= ${r.formula}`  // a worked-out figure is where its step says
   if (!r.path) return 'in none of the files checked'  // a figure the scan found in no file names no file
   const parts = [name(r.path)]
   if (r.sheet) parts.push(`sheet ${r.sheet}`)
@@ -209,6 +213,7 @@ export function where(r: ClaimRecord): string {
   else if (r.page && !isWeb(r.path)) parts.push(`page ${r.page}`)
   // A figure that turns up in many places is lit where it first does, which may not be the one meant.
   if ((r.places ?? 1) > 1) parts.push(`1 of ${r.places} places`)
+  if (r.rounded) parts.push(`rounded from ${r.rounded}`)
   return parts.join(' · ')
 }
 

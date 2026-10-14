@@ -3,7 +3,7 @@
 // One run of `claim ... --json`, kept as it came back, plus the quote asked
 // about and when. `status` is core's word, or 'error' when claim could not run.
 export type ClaimRecord = {
-  status: 'exact' | 'partial' | 'not found' | 'not searchable' | 'error'
+  status: 'exact' | 'partial' | 'not found' | 'not searchable' | 'error' | 'worked out'
   path: string
   sha256: string | null
   page: number | null
@@ -36,6 +36,10 @@ export type ClaimRecord = {
   // a figure from the scan: how many pages or rows of the files read hold it (the card shows "1 of N places");
   // 1 for anything else, 0 for a figure in no file
   places?: number
+  // a figure in no file that one step makes from figures the files hold: the step, as `$21,893M ÷ $95,315M`
+  formula?: string
+  // a figure written short ($284.7B) that a file holds in full: the file's own spelling (284,668)
+  rounded?: string
   // only for status 'error': the first line claim printed to stderr
   error?: string
 }
