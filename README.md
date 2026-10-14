@@ -8,9 +8,10 @@ markdown files, CSV/TSV/XLSX tables, images, web pages, and links to files. In
 Claude Code it comes as a plugin that also scans every answer against the files
 the session read: every run of eight words the answer shares with a file, and
 every figure in it, is checked whether or not the model called the tool or used
-quotation marks. $22,270M matches 22,270 on a page "in millions"; a figure one step (a sum,
-ratio, average or growth) makes from figures the files hold is "worked out", with its formula;
-any other is "in no file". The point is to make any citation checkable at a glance, without
+quotation marks. A figure counts only where the file's line shares words with the answer's
+sentence around it, so a 22.2% that happens to sit in an unrelated table doesn't count. $22,270M
+matches 22,270 on a page "in millions". A figure in no file is "worked out" (computed or inferred,
+never checked), and claim lists the figures next to it in the answer and where they are. The point is to make any citation checkable at a glance, without
 trusting the model's say-so.
 
 ## Install
@@ -59,7 +60,6 @@ are drawn from claim's real output, on the fixtures and on a Walmart 10-K:
 
 ![Quotes from two PDFs: one in the file, one partly, one not in the file](docs/claim-quotes.gif)
 ![A spreadsheet cell, lit in its row](docs/claim-spreadsheet.gif)
-![Figures from a filing: found in millions, rounded, worked out, and one in no file](docs/claim-figures.gif)
 
 In Claude Code each answer gets one line per claim under it, in the answer's order: the dot, the claim in
 Claude's words, and where it is; `auto` marks one claim checked by itself, not because Claude asked. The

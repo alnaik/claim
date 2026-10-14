@@ -45,7 +45,7 @@
   skip: []
 - files: [fixtures/repeats.csv]
   answer: |
-    The hotel cost 1200.00 and the taxi 35.50.
+    The hotel, the dinner and the venue each cost 1200.00, and the taxi 35.50.
   find:
     - [figure, exact, "1200.00", 3]   # lit in the first row it is on, and the card says 1 of 3 places
     - [figure, exact, "35.50", 1]
@@ -61,19 +61,27 @@
   skip: ["4.5bn"]                           # the same figure as 4.5B, reported once
 - files: [fixtures/filing.md]
   answer: |
-    Net income was $21,893M on average equity of $95,315M (from $99,617M and $91,013M), a return of about 23.0%. Assets were $284.7B. Revenue was $500M.
+    Net income was $21,893M on average equity of $95,315M (from $99,617M and $91,013M), a return of about 23.0%. Total assets were $284.7B. Revenue was $500M.
   find:
     - [figure, exact, "$21,893M"]           # the file says 21,893 under "(Amounts in millions)"
     - [figure, exact, "$284.7B"]            # written short: 284,668 in millions, to the tenth of a billion
-    - [figure, worked out, "$95,315M"]      # the average of two figures the file holds
-    - [figure, worked out, "23.0%"]         # made from a held figure and a worked-out one
-    - [figure, not found, "$500M"]          # in no file, and no step makes it
+    - [figure, not found, "$95,315M", "near: $21,893M filing.md, $99,617M filing.md, $91,013M filing.md, 23.0% (worked out)"]  # no sum is redone: its neighbours and where they are
+    - [figure, not found, "23.0%"]          # computed: worked out, never checked
+    - [figure, not found, "$500M", "none of the files"]  # alone in its sentence: nothing near to list
   skip: []
 - files: [fixtures/filing.md]
   answer: |
     Return on assets was 7.9% and return on investment 15.1%, so return on equity is about 23.0%. Equity grew about 9% (from $91,013M to $99,617M).
   find:
     - [figure, exact, "7.9%"]
-    - [figure, not found, "23.0%"]          # 7.9% + 15.1% is 23.0%, but percents are never added: a coincidence
-    - [figure, not found, "9%"]             # $99,617M ÷ $91,013M − 1 is 9.45%, which rounds to 9%, but 9% is too rough to tell what made it
+    - [figure, not found, "23.0%"]
+    - [figure, not found, "9%"]
+  skip: []
+- files: [fixtures/filing.md]
+  answer: |
+    Sales grew 7.9% from last year. Attributable earnings were $21,893M. Shareholders' equity is in the statement (p. 1, $99,617M).
+  find:
+    - [figure, not found, "7.9%"]           # the file's 7.9% is return on assets: a line sharing no word is a coincidence
+    - [figure, exact, "$21,893M"]           # one shared word is enough when the file uses it on one line ("attributable")
+    - [figure, exact, "$99,617M"]           # "p. 1" doesn't end the sentence, so its words still count
   skip: []

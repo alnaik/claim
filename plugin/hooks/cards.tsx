@@ -10,15 +10,14 @@ type Ui = Pick<Elements['terminal'], 'Box' | 'Text' | 'Button'>
 // How each of core's statuses looks: the card's word, the band's count word, the dot and its colour.
 // The words say where the text is, not that the answer is right: "In the file" proves the
 // words are there, not that the claim built on them holds.
-// A figure in no file has its own look, not red: it may be a sum worked out right, so red stays
-// for a quote that is not in its file, and a red dot keeps meaning "don't rely on it".
+// A figure in no file is "worked out": computed or inferred by the model, never checked. Its own
+// look, not red, so red stays for a quote that is not in its file and keeps meaning "don't rely on it".
+// claim redoes no sum: the card names the figures near it in the answer and where they are.
 export const LOOK = {
   exact: { word: 'In the file', count: 'in file', color: 'success', dot: '●' },
   partial: { word: 'Partly in the file', count: 'partly', color: 'warning', dot: '●' },
   'not found': { word: 'Not in the file', count: 'not in file', color: 'error', dot: '●' },
-  'no file': { word: 'In no file', count: 'in no file', color: 'warning', dot: '○' },
-  // Not in a file itself, but one step makes it from figures that are: green, hollow, since the sum is claim's.
-  'worked out': { word: 'Worked out', count: 'worked out', color: 'success', dot: '○' },
+  'no file': { word: 'Worked out', count: 'worked out', color: 'warning', dot: '○' },
   'not searchable': { word: 'Not searchable', count: 'not searchable', color: 'inactive', dot: '●' },
   error: { word: 'claim could not run', count: 'could not run', color: 'inactive', dot: '●' },
 } as const
@@ -35,9 +34,8 @@ const HELP = {
   'not found': "This quote is not in the file. Don't rely on it.",
   // A figure (a sum, an average) can be right without being in any file; the card says to check its sources.
   // The scan looks in the ten files read most recently, so a figure from an older one is reported this way too.
-  'no file': 'This figure is in none of the files checked (the ten read most recently). If it was computed, check the rows it rests on.',
+  'no file': 'This figure is in none of the files checked (the ten read most recently): computed or inferred, not checked. Check the figures near it.',
   'not searchable': 'Images have no text to search.',
-  'worked out': 'No file has this figure, but its figures are in the files and claim redid the step.',
   error: null,
 } as const
 
@@ -203,8 +201,9 @@ export function ago(ms: number): string {
 
 // Where the record is, in a few words: file, sheet, then the line, cell, row or page.
 export function where(r: ClaimRecord): string {
-  if (r.formula) return `= ${r.formula}`  // a worked-out figure is where its step says
-  if (!r.path) return 'in none of the files checked'  // a figure the scan found in no file names no file
+  // A figure the scan found in no file names no file, but the answer's figures around it and where they are.
+  if (!r.path && r.near?.length) return `near: ${r.near.map(n => `${n.quote} ${n.where ?? '(worked out)'}`).join(', ')}`
+  if (!r.path) return 'in none of the files checked'
   const parts = [name(r.path)]
   if (r.sheet) parts.push(`sheet ${r.sheet}`)
   const table = r.excerpt && !Array.isArray(r.excerpt) ? r.excerpt : null

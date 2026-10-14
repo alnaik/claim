@@ -46,11 +46,12 @@ def main():
         start = time.perf_counter()
         found = scan(scan_["answer"], scan_["files"])
         ms = round((time.perf_counter() - start) * 1000)
-        for kind, status, piece, *places in scan_["find"]:  # places: how many pages or rows hold the figure
+        for kind, status, piece, *places in scan_["find"]:
             hits = [r for r in found if r["kind"] == kind and (piece == r["quote"] if kind == "figure" else piece.lower() in r["quote"].lower())]
             # a made-up quote must leave no record at all, since no file was ever involved
             ok = (not hits) if status == "not found" and kind == "quote" else any(r["status"] == status for r in hits)
-            ok = ok and (not places or any(r["places"] == places[0] for r in hits))
+            # a number after it: how many places hold the figure; words: what its text line must say
+            ok = ok and (not places or any(r["places"] == places[0] if isinstance(places[0], int) else places[0] in r.get("text", "") for r in hits))
             got = hits[0]["status"] if hits else "no record"
             scanned += 1; passed += ok
             if got == "exact" and status != "exact":

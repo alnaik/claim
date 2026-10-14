@@ -499,8 +499,8 @@ test('the whole answer goes to the scan as written, and a figure from nowhere sa
   // Newest record first: the figure, with the help line for a figure in no file.
   const paneProps = { title: 'claim', isFocused: false, bodyColumns: 100, placement: 'dock', scroll: { offset: 0, bodyRows: 30, contentRows: 30 }, view: {} } as never
   const pane = await $.ui.mount({ plugin: 'claim', surface: 'terminal', component: 'Pane', requestId: 'claim', props: paneProps })
-  // A figure in no file is not red: its own word and a hollow dot, since it may be a sum worked out right.
-  expect(await pane.find({ text: /^In no file$/ })).toBeDefined()
+  // A figure in no file is not red: "worked out" and a hollow dot, since it may be a sum done right.
+  expect(await pane.find({ text: /^Worked out$/ })).toBeDefined()
   expect(await pane.find({ text: '○' })).toBeDefined()
   expect(await pane.find({ text: /^This figure is in none of the files checked/ })).toBeDefined()
   expect(await pane.find({ text: /in none of the files checked$/ })).toBeDefined()  // the card names no file
@@ -512,7 +512,7 @@ test('the whole answer goes to the scan as written, and a figure from nowhere sa
   // With no red quote, the band names the figure after its own count.
   const bandProps = { hasSurvey: false, isWorking: false, maxRows: 4, bodyColumns: 80, scroll: { offset: 0, bodyRows: 4, contentRows: 1 }, view: {} } as never
   const band = await $.ui.mount({ plugin: 'claim', component: 'AbovePrompt', requestId: 'band', surface: 'terminal', props: bandProps })
-  expect(await band.find({ text: /1 in no file/ })).toBeDefined()
+  expect(await band.find({ text: /1 worked out/ })).toBeDefined()
   expect(await band.find({ text: /not in file/ })).toBeUndefined()
   expect((await band.find({ key: 'red' }))?.props.label).toBe('$3,382.50')
   await band.unmount()
@@ -654,7 +654,7 @@ test('a place a claim call already showed is not shown again by the scan; other 
   const bandProps = { hasSurvey: false, isWorking: false, maxRows: 4, bodyColumns: 100, scroll: { offset: 0, bodyRows: 4, contentRows: 1 }, view: {} } as never
   const band = await $.ui.mount({ plugin: 'claim', component: 'AbovePrompt', requestId: 'band', surface: 'terminal', props: bandProps })
   expect(await band.find({ text: /3 in file/ })).toBeDefined()  // the call's card, row 31, and the Q4 sheet
-  expect(await band.find({ text: /1 in no file/ })).toBeDefined()
+  expect(await band.find({ text: /1 worked out/ })).toBeDefined()
   await band.unmount()
 
   // A second answer: the band counts it alone, not the first answer's records on top.
@@ -662,7 +662,7 @@ test('a place a claim call already showed is not shown again by the scan; other 
   await $.tool.call({ tool: 'mcp__claim__claim', file: '/work/costs.xlsx', quote: 'Hotel 1,234.50' })
   const again = await $.ui.mount({ plugin: 'claim', component: 'AbovePrompt', requestId: 'band', surface: 'terminal', props: bandProps })
   expect(await again.find({ text: /1 in file/ })).toBeDefined()
-  expect(await again.find({ text: /in no file/ })).toBeUndefined()
+  expect(await again.find({ text: /worked out/ })).toBeUndefined()
   await again.unmount()
 
   // A third prompt with no claim call and nothing scanned: no band, so an earlier answer's counts never pass for this one's.
@@ -772,14 +772,15 @@ test('each claim call\'s card shows under Claude\'s answer, not under the call, 
   await band.unmount()
 })
 
-test('a figure worked out from figures in the files says how, and one written short says what it rounds', async ($, on) => {
+test('a worked-out figure names the figures near it and where they are, and one written short says what it rounds', async ($, on) => {
   mock.clock(on)
   disk(on)
   on('fs.read', ($, e) => ({ value: e.as === 'bytes' ? bytes(e.path) : 'Call claim.' }))
   const held = { ...TEXT_AND_TABLE["we'll ship the beta on 14 March"], path: '/work/filing.pdf', page: 77, lines: null, excerpt: null }
   const scan = [
     { ...held, quote: '$284.7B', kind: 'figure', rounded: '284,668' },
-    { status: 'worked out', page: null, path: '', sha256: null, matched: null, lines: null, excerpt: null, crop: null, quote: '$95,315M', kind: 'figure', formula: '($99,617M + $91,013M) ÷ 2' },
+    { status: 'not found', page: null, path: '', sha256: null, matched: null, lines: null, excerpt: null, crop: null, quote: '$95,315M', kind: 'figure', places: 0,
+      near: [{ quote: '$99,617M', where: 'p.77' }, { quote: '23.0%', where: null }] },
   ]
   on('process.run', () => ({ value: { exitCode: 0, stdout: JSON.stringify(scan), stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }))
   on('tool.call', () => ({ result: 'ok' }))
@@ -794,11 +795,11 @@ test('a figure worked out from figures in the files says how, and one written sh
   const paneProps = { title: 'claim', isFocused: false, bodyColumns: 100, placement: 'dock', scroll: { offset: 0, bodyRows: 30, contentRows: 30 }, view: {} } as never
   const pane = await $.ui.mount({ plugin: 'claim', surface: 'terminal', component: 'Pane', requestId: 'claim', props: paneProps })
   const labels = async () => (await pane.findAll({ type: 'Button' })).map(b => String(b.props.label))
-  // In the answer's order: the rounded figure, then the worked-out one, each saying how.
-  expect((await labels()).filter(l => /^ {2}/.test(l))).toEqual(['  filing.pdf · page 77 · rounded from 284,668 · auto', '  = ($99,617M + $91,013M) ÷ 2 · auto'])
-  await pane.press({ key: `place-0` })  // the newest record, the worked-out figure
+  // In the answer's order: the rounded figure, then the worked-out one with its neighbours.
+  expect((await labels()).filter(l => /^ {2}/.test(l))).toEqual(['  filing.pdf · page 77 · rounded from 284,668 · auto', '  near: $99,617M p.77, 23.0% (worked out) · auto'])
+  // A worked-out figure is a problem to look at, so the pane opens on it.
   expect(await pane.find({ text: /^Worked out$/ })).toBeDefined()
-  expect(await pane.find({ text: /^No file has this figure, but its figures are in the files/ })).toBeDefined()
+  expect(await pane.find({ text: /^This figure is in none of the files checked/ })).toBeDefined()
   await pane.unmount()
   const band = await $.ui.mount({ plugin: 'claim', component: 'AbovePrompt', requestId: 'band', surface: 'terminal', props: { hasSurvey: false, isWorking: false, maxRows: 4, bodyColumns: 80, scroll: { offset: 0, bodyRows: 4, contentRows: 1 }, view: {} } as never })
   expect(await band.find({ text: /1 worked out/ })).toBeDefined()
