@@ -54,12 +54,12 @@ and Cursor (`~/.cursor/mcp.json`) take this block, with the path to your clone:
 
 ## Use it
 
-Ask something like *"Read report.pdf and tell me what the board expects next
-year, then show me the source."* The AI quotes the document, calls `claim`, and
-gets this picture plus the line `exact · report.pdf · page 2 · 84e3e316` (the
-end is the start of the file's fingerprint):
+Ask Claude about a file. Under its answer comes one line per claim, the first problem open. These
+are drawn from claim's real output, on the fixtures and on a Walmart 10-K:
 
-![claim in Claude Code: the checks under an answer](fixtures/out/demo.gif)
+![Quotes from two PDFs: one in the file, one partly, one not in the file](docs/claim-quotes.gif)
+![A spreadsheet cell, lit in its row](docs/claim-spreadsheet.gif)
+![Figures from a filing: found in millions, rounded, worked out, and one in no file](docs/claim-figures.gif)
 
 In Claude Code each answer gets one line per claim under it, in the answer's order: the dot, the claim in
 Claude's words, and where it is; `auto` marks one claim checked by itself, not because Claude asked. The

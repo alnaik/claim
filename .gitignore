@@ -6,7 +6,6 @@ out.png
 fixtures/out/*
 !fixtures/out/.gitkeep
 !fixtures/out/example-*.png
-!fixtures/out/demo.gif
 
 # personal working notes, kept locally
 CLAUDE.md
