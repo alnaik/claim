@@ -310,7 +310,14 @@ def write_story(html, path, fontsize):
     writer.close()
 
 
+def units():
+    """Figures with a size or percent beside them, so a bare number never passes for one."""
+    Path(HERE / "units.md").write_text(
+        "# Quarter in numbers\n\nRevenue grew 4.5% this quarter.\nSales were 4.5 billion in total.\n"
+        "Costs were $2.1B, and headcount reached 3,000.\n")
+
+
 if __name__ == "__main__":
     paper(); contract(); report(); hyphen(); pagebreak(); curly(); scanned(); notes(); tables(); photo()
-    stamped(); workbook(); formats(); titled()
+    stamped(); workbook(); formats(); titled(); units()
     print("fixtures written")

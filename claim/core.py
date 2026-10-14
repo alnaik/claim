@@ -201,14 +201,14 @@ def widen(found, count, i):
 # page's exact characters so PyMuPDF's search_for can find the rectangles.
 # Only a hyphen at a line end is skipped: "re-sign" in the middle of a line is
 # not "resign", and must not come back green for it. A number has to stand on its
-# own, sign included: "2.5" is not the "2.5" inside "12.5", nor the one in "-2.5".
+# own, sign and size included: "2.5" is not the "2.5" inside "12.5", "-2.5" or "2.5%".
 def spelling_on_page(text, needle):
     letters = [r"(?:-\s+)?".join(re.escape(c) for c in word) for word in needle.split()]
     pattern = r"\s+".join(letters)
     if needle[0].isdigit():
         pattern = r"(?<!\d)(?<!\d[.,])(?<!\s-)(?<!^-)" + pattern
     if needle[-1].isdigit():
-        pattern += r"(?!\d|[.,]\d)"
+        pattern += table.AFTER_NUMBER
     m = re.search(pattern, text.translate(FOLD), re.IGNORECASE)
     return text[m.start():m.end()] if m else None
 

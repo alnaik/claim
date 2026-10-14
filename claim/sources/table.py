@@ -49,14 +49,19 @@ def score(row, quote):
     return len(set(squash(quote).split()) & set(text.split()))
 
 
+# What may not follow a number for it to stand on its own: more digits, or a size or percent,
+# which make it another figure ("4.5" is not the 4.5 of "4.5%", "4.5B" or "4.5 billion").
+AFTER_NUMBER = r"(?!\d|[.,]\d|[a-z%]|\s(?:%|percent|thousand|million|billion|bn|mn)\b)"
+
+
 def within(needle, text):
     """Whether the text holds the needle, spacing and case aside. A number must stand on its
-    own, sign included: "2.5" is not inside "12.5%" or "-2.5", and "2100" is not inside "21000"."""
+    own, sign and size included: "2.5" is not inside "12.5%", "-2.5" or "2.5%", and "2100" is not inside "21000"."""
     needle, text = squash(needle), squash(text)
     if not needle:
         return False
     before = r"(?<!\d)(?<!\d[.,])(?<!\s-)(?<!^-)" if needle[0].isdigit() else ""
-    after = r"(?!\d|[.,]\d)" if needle[-1].isdigit() else ""
+    after = AFTER_NUMBER if needle[-1].isdigit() else ""
     return re.search(before + re.escape(needle) + after, text) is not None
 
 

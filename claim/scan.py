@@ -16,6 +16,8 @@ EDGE = "\"'.,;:!?()[]{}-"  # punctuation at a word's edges that doesn't change t
 NOWHERE = {"status": "not found", "page": None, "path": "", "sha256": None, "matched": None, "lines": None,
            "excerpt": None, "sheet": None, "link": None, "png": None, "crop": None, "places": 0}  # a figure in no file
 NUMBER = re.compile(r"^(-?)[$€£]?-?(\d[\d,]*(?:\.\d+)?)(k|mn|m|bn|b)?(%?)$")  # 4.2m, 1.5bn, 300k, -5.2%
+SIZES = {"k": 3, "m": 6, "mn": 6, "b": 9, "bn": 9}
+WORDS = {"thousand": "k", "million": "m", "billion": "b", "bn": "b", "mn": "m", "percent": "%", "%": "%"}  # "4.5 billion"
 
 
 # [stop 16] The scan. The answer's words are laid out once, then each file's words are
@@ -54,11 +56,11 @@ def scan(answer, files):
             piece_keys = [k for k in piece_keys if k]
             for i in range(len(piece_keys) - core.RUN + 1):
                 runs.setdefault(tuple(piece_keys[i:i + core.RUN]), page)
-            for k in piece_keys:
-                figure_ = figure(k)
-                if figure_ and figure_ not in figures:
-                    figures[figure_] = (file, k, page)  # the file's own spelling, so claim() finds it
-            for figure_ in {figure(k) for k in piece_keys} - {None}:  # a page or row counts once
+            found = figures_in(piece_keys)
+            for _, figure_, spelling in found:
+                if figure_ not in figures:
+                    figures[figure_] = (file, spelling, page)  # the file's own spelling, so claim() finds it
+            for figure_ in {f for _, f, _ in found}:  # a page or row counts once
                 places[figure_] = places.get(figure_, 0) + 1
         start = None
         for i in range(len(keys) - core.RUN + 1):
@@ -78,9 +80,8 @@ def scan(answer, files):
         quote = text[words[a][1]:words[b - 1][2]].strip(EDGE + " ")  # the answer's own comma at the cut
         results.append({**core.claim(file, quote, page), "quote": quote, "kind": "quote", "places": 1})
     seen = set()
-    for i, (k, _, _) in enumerate(words):
-        figure_ = figure(k)
-        if not figure_ or figure_ in seen or i in covered:
+    for i, figure_, k in figures_in(keys):
+        if figure_ in seen or i in covered:
             continue
         seen.add(figure_)
         if len(seen) > MAX_FIGURES:
@@ -113,11 +114,24 @@ def key(word):
     return k
 
 
+def figures_in(keys):
+    """Every figure in a list of words, as (word index, figure, spelling). A size or percent written
+    as the next word belongs to the number: "4.5 billion" is 4.5b, and its spelling takes both words."""
+    found = []
+    for i, k in enumerate(keys):
+        after = WORDS.get(keys[i + 1]) if i + 1 < len(keys) and NUMBER.match(k) and not NUMBER.match(k)[3] and not k.endswith("%") else None
+        figure_ = figure(k + after) if after else figure(k)
+        if figure_:
+            found.append((i, figure_, f"{k} {keys[i + 1]}" if after else k))
+    return found
+
+
 def figure(k):
     """A number the answer could only have taken from somewhere: with a currency or percent sign,
     a decimal point, a thousands comma, a size (k, m, mn, bn, b), or four or more digits, except a
     four-digit year (1900-2099). One to three digits stay quiet: they are counts ("3 files", "300 pages").
-    Spelled one way: 1,234.50 is 1234.5, 60% is 0.6, and 4.2m keeps its m so it is never 4.2."""
+    Spelled one way, its size and percent worked in: 1,234.50 is 1234.5, 60% is 0.6, 4.5B is
+    4500000000, so a figure with a size or a percent is never the bare number (4.5B is not 4.5%)."""
     m = NUMBER.match(k)
     if not m:
         return None
@@ -126,8 +140,8 @@ def figure(k):
     if not (percent or size or "$" in k or "€" in k or "£" in k or "." in digits or "," in digits or len(digits) >= 4) or year:
         return None
     try:  # a percent is the number it stands for: 60% and a cell shown as 0.60 are one figure
-        n = Decimal(sign + digits.replace(",", "")) / (100 if percent else 1)
-        return f"{n.normalize():f}{size}"
+        n = Decimal(sign + digits.replace(",", "")).scaleb(SIZES.get(size, 0)) / (100 if percent else 1)
+        return f"{n.normalize():f}"
     except InvalidOperation:
         return None
 

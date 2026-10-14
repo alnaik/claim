@@ -50,3 +50,12 @@
     - [figure, exact, "1200.00", 3]   # lit in the first row it is on, and the card says 1 of 3 places
     - [figure, exact, "35.50", 1]
   skip: []
+- files: [fixtures/units.md]
+  answer: |
+    Revenue was 4.5B, sales were 4.5bn, growth was 4.5 percent, costs were $2,100,000,000, and margin was 4.5.
+  find:
+    - [figure, exact, "4.5b"]               # 4.5B is the 4.5 billion in the file, never the 4.5%
+    - [figure, exact, "4.5 percent"]        # a percent written as a word is the 4.5%
+    - [figure, exact, "$2,100,000,000"]     # the $2.1B in the file, written out
+    - [figure, not found, "4.5"]            # a bare 4.5 is neither 4.5% nor 4.5 billion
+  skip: ["4.5bn"]                           # the same figure as 4.5B, reported once

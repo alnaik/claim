@@ -231,3 +231,6 @@
   page: 2
   expect: partial        # first word changed: the whole rest is lit, not just its first 8 words
   matched: "expects operating margins to remain broadly stable in the coming year."
+- file: fixtures/units.md
+  quote: "4.5"
+  expect: not found      # the file has 4.5% and 4.5 billion, never a bare 4.5
