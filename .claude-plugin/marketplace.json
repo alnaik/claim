@@ -1,0 +1,12 @@
+{
+  "name": "claim",
+  "owner": { "name": "alnaik" },
+  "description": "claim: see the page a quote came from, with the quote highlighted.",
+  "plugins": [
+    {
+      "name": "claim",
+      "source": ".",
+      "description": "Shows where a quote is in its source file, checked by claim itself."
+    }
+  ]
+}

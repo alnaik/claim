@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "claim": {
+      "command": "uv",
+      "args": ["run", "claim-server"]
+    }
+  }
+}

@@ -1,0 +1,228 @@
+# Each case: file, quote, optional page hint, expect (exact / partial / not found),
+# optional `at` = the page the quote really is on (a hit elsewhere counts as confident-wrong),
+# optional `lines` = [first, last] line numbers a text file's hit must report,
+# optional `cells` = the columns (0 is A) of the matched row's cells that must be lit.
+
+# --- M1: exact matches ---
+- file: fixtures/paper.pdf
+  quote: "We observe a 12% improvement over the baseline when the retrieval step is enabled."
+  page: 2
+  expect: exact
+  at: 2
+  lines: [41, 42]        # the page's own lines, counted from its top
+- file: fixtures/paper.pdf
+  quote: "the gain disappears entirely once documents are shorter than two hundred words"
+  expect: exact          # no page hint, found by scanning the whole document
+  at: 3
+- file: fixtures/paper.pdf
+  quote: "“All experiments were run three times and we report the median of the three runs…”"
+  page: 3                # hint is one page off; neighbours are checked next
+  expect: exact
+  at: 4
+- file: fixtures/contract.pdf
+  quote: "Either party may terminate this Agreement by giving not less than ninety (90) days' written notice"
+  expect: exact
+- file: fixtures/report.pdf
+  quote: "revenue grew by 10% to 53.9 million, driven mainly by new services contracts"
+  page: 1
+  expect: exact
+  at: 1
+- file: fixtures/hyphen.pdf
+  quote: "the implementation plan was realistic, although the budget for maintenance looked too optimistic"
+  expect: exact          # source splits words with hyphens at line ends
+  lines: [1, 4]
+- file: fixtures/hyphen.pdf
+  quote: "asked the director to resign the contract"
+  expect: not found      # the page says "re-sign" mid-line, which is a different word
+- file: fixtures/hyphen.pdf
+  quote: "re-sign the contract before the co-op meeting"
+  expect: exact
+- file: fixtures/curly.pdf
+  quote: 'the launch was "not a failure - just early" and asked the team to keep going'
+  expect: exact          # source uses curly quotes and an em-dash
+- file: fixtures/contract.pdf
+  quote: "NEITHER PARTY'S TOTAL LIABILITY under this Agreement shall exceed the total fees paid"
+  expect: exact          # case-insensitive
+
+# --- M2: rewrites, misses, and things that must not get a green box ---
+- file: fixtures/paper.pdf
+  quote: "Our results show a twelve percent gain overall. We observe a 12% improvement over the baseline when the retrieval step is enabled."
+  page: 2
+  expect: partial        # first sentence invented, second is real
+  at: 2
+- file: fixtures/contract.pdf
+  quote: "Interest accrues on any overdue amount at four percent (4%) per year above the base rate, compounded monthly."
+  expect: partial        # ending changed; an 8-word run still matches
+- file: fixtures/pagebreak.pdf
+  quote: "In the end the committee agreed that the budget would be frozen until the spring review."
+  expect: partial        # sentence runs across a page break; only the page-1 half can be shown
+  at: 1
+- file: fixtures/paper.pdf
+  quote: "we see roughly a 12 percent improvement over baseline"
+  page: 2
+  expect: not found      # paraphrased so much that no 8 words in a row survive
+- file: fixtures/contract.pdf
+  quote: "this sentence does not exist anywhere in the agreement at all"
+  page: 2
+  expect: not found
+- file: fixtures/scanned.pdf
+  quote: "This Agreement begins on the Effective Date"
+  expect: not found      # picture of text, no OCR
+- file: fixtures/missing.pdf
+  quote: "anything"
+  expect: not found      # file isn't there
+- file: fixtures/paper.pdf
+  quote: "Future work should test whether the effect holds for languages with rich morphology."
+  page: 1
+  expect: exact          # hint is four pages off; found on the full scan
+  at: 5
+- file: fixtures/paper.pdf
+  quote: "The model was trained on a large private corpus collected over several years by a team of annotators who were paid hourly and asked to rate each answer on a five point scale for helpfulness, accuracy and tone, and the resulting scores were averaged per item before training. Surprisingly, the gain disappears entirely once documents are shorter than two hundred words. This finding was later confirmed by three independent groups using different data."
+  expect: partial        # over 400 characters, so the full-quote search is skipped
+  at: 3
+
+# --- M4: other sources ---
+- file: fixtures/notes.md
+  quote: "we'll ship the beta on 14 March - after the security review, not before"
+  page: 2
+  expect: exact          # markdown laid out as a PDF; curly apostrophe and em-dash in the source
+  at: 2
+  lines: [48, 48]        # the line in notes.md itself, worked back from the typed-out page
+- file: fixtures/notes.md
+  quote: "We agreed to cancel the beta entirely."
+  expect: not found
+- file: fixtures/make_fixtures.py
+  quote: 'def scanned(): """A page that is only a picture of text.'
+  expect: exact          # source code is text too
+  lines: [148, 149]
+- file: fixtures/cities.csv
+  quote: "host of the 2031 regional games"
+  expect: exact          # the row is found, drawn with 4 rows either side, then searched as a PDF
+- file: fixtures/cities.tsv
+  quote: "Bremen IT 508353"
+  expect: exact          # quote spans several cells of one row
+- file: fixtures/cities.xlsx
+  quote: "Gdansk"
+  expect: exact
+- file: "fixtures/cities.xlsx#budget"
+  quote: "conference fees"
+  expect: exact          # second sheet picked with #budget
+- file: fixtures/cities.xlsx
+  quote: "conference fees"
+  expect: exact          # no sheet named: claim finds the tab the quote is on
+  sheet: budget
+- file: fixtures/tabs.xlsx
+  quote: "Support answered within the hour every time we opened a ticket this quarter."
+  expect: exact          # on the third tab
+  sheet: feedback
+- file: fixtures/tabs.xlsx
+  quote: "Setup took two days because the import tool rejected all of our old files."
+  expect: partial        # reworded; the right tab and row are still found
+  sheet: feedback
+- file: fixtures/tabs.xlsx
+  quote: "Cobalt Foods cancelled their contract in June."
+  expect: not found
+- file: fixtures/tabs.xlsm
+  quote: "We would renew if the reporting screen could export straight to PDF."
+  expect: exact          # macro-enabled workbook, same as .xlsx inside
+  sheet: feedback
+- file: fixtures/tabs.xls
+  quote: "Support answered within the hour every time we opened a ticket this quarter."
+  expect: exact          # pre-2007 workbook, read with xlrd
+  sheet: feedback
+- file: "fixtures/tabs.xls#q2 detail"
+  quote: "May south 14800"
+  expect: exact          # a sheet named by hand, and a whole number not written 14800.0
+  sheet: q2 detail
+- file: fixtures/formats.xlsx
+  quote: "$1,234.50"
+  expect: exact          # money as Excel shows it
+- file: fixtures/formats.xlsx
+  quote: "2100"
+  expect: exact          # the stored value, as a script reading the file would print it
+- file: fixtures/formats.xlsx
+  quote: "6-Jan-24"
+  expect: exact          # a date as Excel shows it
+- file: fixtures/formats.xlsx
+  quote: "31.0%"
+  expect: exact
+- file: fixtures/formats.xlsx
+  quote: "$4,800.00"
+  expect: not found
+- file: fixtures/formats.xlsx
+  quote: "Taxi 3"
+  expect: exact          # 2.5 shown with no decimals is 3, as Excel rounds, not 2
+- file: fixtures/formats.xlsx
+  quote: "Taxi 2"
+  expect: not found      # neither what Excel shows nor what is stored
+- file: fixtures/formats.xlsx
+  quote: "on 9 Jan 0042"
+  expect: exact          # quoted words in a date format, and a zero-padded number
+- file: fixtures/formats.xlsx
+  quote: "2.5"
+  expect: exact          # the stored taxi cost, not the 2.5 inside the hotel's 12.5%
+  cells: [1]
+- file: fixtures/formats.xlsx
+  quote: "12.5%"
+  expect: exact
+  cells: [3]
+- file: fixtures/formats.xlsx
+  quote: "Taxi 42"
+  expect: exact          # the padded ref 0042 is stored as 42; the 42 inside 2100 doesn't count
+  cells: [0, 4]
+- file: fixtures/formats.xlsx
+  quote: "=SUM(B2:B5)"
+  expect: exact          # a formula a script wrote has no saved result, so its text is shown instead
+  cells: [1]
+- file: fixtures/titled.xlsx
+  quote: "Train 48 Porto"
+  expect: exact          # the title row and the blank row under it are not the header
+  header: [item, cost, city]
+  cells: [0, 1, 2]
+- file: fixtures/formats.xlsx
+  quote: "Total 3385"
+  expect: not found      # the sum was never worked out and saved, so that total is not in the file
+- file: fixtures/cities.csv
+  quote: "Malmo, 693968"
+  expect: exact          # two values from one row that don't sit side by side
+- file: fixtures/cities.csv
+  quote: "Malmo 731091"
+  expect: not found      # both real, but from different rows
+- file: fixtures/formats.xlsx
+  quote: "Conference ticket 2100"
+  expect: exact          # a name and a stored amount, a column apart
+- file: fixtures/formats.xlsx
+  quote: "Conference ticket $4,800.00"
+  expect: not found      # the name is real, the amount isn't
+- file: fixtures/cities.csv
+  quote: "Paris FR 2100000"
+  expect: not found
+- file: fixtures/photo.png
+  quote: "SERVICES AGREEMENT"
+  expect: not searchable # images are shown as they are, with an honest grey header
+- file: "{server}/paper.pdf"
+  quote: "We observe a 12% improvement over the baseline when the retrieval step is enabled."
+  page: 2
+  expect: exact          # downloaded over http first
+  at: 2
+  link: "{server}/paper.pdf#page=2"
+- file: "{server}/notes.md"
+  quote: "we'll ship the beta on 14 March"
+  expect: exact
+- file: "{server}/nothing-here.pdf"
+  quote: "anything"
+  expect: not found      # 404
+- file: "{server}/page.html"
+  quote: "Water clarity improved downstream of the old mill"
+  expect: exact          # web page printed to a PDF by a headless browser
+  link: "{server}/page.html#:~:text=Water%20clarity%20improved%20downstream%20of%20the%20old%20mill"
+- file: "{server}/page.html"
+  quote: "foxes were recorded there every year since 2019"
+  expect: not found
+- file: fixtures/page.html
+  quote: "The quick brown fox jumps over the lazy dog"
+  expect: exact          # a local .html file is just text
+- file: fixtures/stamped.pdf
+  quote: "The finance team signed off on the amount shown in the field below."
+  expect: exact          # the picture must also show the red APPROVED stamp and the $4,200.00 field
+  at: 1

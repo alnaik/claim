@@ -1,0 +1,19 @@
+.DS_Store
+__pycache__/
+.venv/
+*.egg-info/
+out.png
+fixtures/out/*
+!fixtures/out/.gitkeep
+!fixtures/out/example-*.png
+!fixtures/out/demo.gif
+
+# personal working notes, kept locally
+CLAUDE.md
+IDEAS.md
+JOURNAL.md
+KICKOFF.md
+LEARN.md
+SPEC.md
+STATUS.md
+TOUR.md

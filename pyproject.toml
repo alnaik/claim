@@ -1,0 +1,22 @@
+[project]
+name = "claim"
+version = "0.1.0"
+description = "Show the source page for a quote, with the quote highlighted."
+requires-python = ">=3.11"
+dependencies = [
+    "pymupdf",
+    "mcp",
+    "openpyxl",
+    "pyyaml",
+    "playwright>=1.63.0",
+    "xlrd>=2.0.2",
+]
+
+[project.scripts]
+claim = "claim.cli:main"
+claim-server = "claim.server:main"
+claim-scan = "claim.cli:scan_main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

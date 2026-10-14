@@ -1,0 +1,10 @@
+{
+  "name": "claim",
+  "version": "0.3.3",
+  "description": "Shows where a quote is in its source file, checked by claim itself, above the prompt and in a pane.",
+  "author": { "name": "alnaik" },
+  "repository": "https://github.com/alnaik/claim",
+  "hooks": "./plugin/hooks/hooks.json",
+  "mcpServers": "./plugin/.mcp.json",
+  "types": "./plugin/types/index.d.ts"
+}

@@ -1,0 +1,52 @@
+# Each scan: an answer as the model might write it, the files the session read (newest first),
+# and what the scan must report: `find` entries are (kind, status, a piece of the quote);
+# `skip` entries are tokens that must not become records (years, counts, versions, covered figures);
+# `never` entries are text no record's quote may contain.
+- files: [fixtures/formats.xlsx, fixtures/report.pdf, fixtures/notes.md]
+  answer: |
+    ## Summary
+
+    The report says revenue **grew by 10% to 53.9 million**, driven mainly by new services contracts, and the board expects operating margins to remain broadly stable in the coming year.
+
+    > We'll ship the beta on 14 March - after the security review, not before.
+
+    | item | cost |
+    |---|---|
+    | Hotel in Lisbon | $1,234.50 |
+
+    The total of the three expenses is $3,382.50, the taxi cost 2.5 with a ratio of 60%, and the conference share was 31.0%. Next year's budget is €1.5bn. Version 0.1.8 shipped in 2024 with 3 files, and the office is "a lovely place to spend the whole winter". The board also says "operating margins to remain broadly stable in the coming year" and then moves on to the next topic. The hotel's change was -5.2%, so the figure to quote is not 5.2%. With the taxi the four come to 3385, and the ticket alone was 2100.
+  find:
+    - [quote, exact, "grew by 10% to 53.9 million, driven"]        # bold marks dropped, no quotation marks needed
+    - [quote, exact, "operating margins to remain broadly stable"]
+    - [quote, exact, "ship the beta on 14 March"]                  # a blockquote, found in the markdown file
+    - [figure, exact, "$1,234.50"]                                  # a figure in a table cell of the answer
+    - [figure, not found, "$3,382.50"]                              # a computed total: in no file
+    - [figure, exact, "31.0%"]
+    - [figure, not found, "€1.5bn"]                                 # a size suffix keeps it a figure: in no file
+    - [figure, exact, "2.5"]                                        # the taxi's stored value, not the 2.5 inside 12.5%
+    - [figure, exact, "60%"]                                        # the cell shows 0.60: a percent is the number it stands for
+    - [figure, exact, "-5.2%"]                                      # a loss, with its sign
+    - [figure, not found, "5.2%"]                                   # the same number with the sign dropped is a different figure
+    - [figure, not found, "3385"]                                   # a computed total with no comma: four digits now count
+    - [figure, exact, "2100"]                                       # four digits, not a year: the ticket's stored value
+    - [quote, not found, "a lovely place to spend the whole winter"]  # quoted but made up: nothing, no record either way
+  skip: ["10%", "53.9", "0.1.8", "2024", "3"]
+  never: ["and then moves on"]                                      # a passage ends at its closing quotation mark
+- files: [fixtures/make_fixtures.py]
+  answer: |
+    The script runs everything from one place:
+
+    ```python
+    if __name__ == "__main__":
+        paper(); contract(); report(); hyphen(); pagebreak(); curly(); scanned(); notes(); tables(); photo()
+    ```
+  find:
+    - [quote, exact, 'if __name__ == "__main__"']   # the underscores are the code's own, not italics marks
+  skip: []
+- files: [fixtures/repeats.csv]
+  answer: |
+    The hotel cost 1200.00 and the taxi 35.50.
+  find:
+    - [figure, exact, "1200.00", 3]   # lit in the first row it is on, and the card says 1 of 3 places
+    - [figure, exact, "35.50", 1]
+  skip: []

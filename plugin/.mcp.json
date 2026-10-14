@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "claim": {
+      "command": "uv",
+      "args": ["run", "--project", "${CLAUDE_PLUGIN_ROOT}", "claim-server"]
+    }
+  }
+}
