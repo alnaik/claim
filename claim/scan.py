@@ -94,12 +94,12 @@ def scan(answer, files):
     # also counts when a file holds it in full to that last digit (284,668 in millions), and says
     # so. One in no file that one simple step makes from figures the answer gives and the files
     # hold is "worked out", with its formula (sums.py); any other is in no file.
-    seen, held, missing = set(), {}, []  # held: answer word index -> (value, the answer's spelling), for sums.py
+    seen, held, missing = set(), {}, []  # held: answer word index -> (value, the answer's spelling, its kind), for sums.py
     for f in figures_in(keys):
         shown = text[words[f.at][1]:words[f.at + f.width - 1][2]].strip(EDGE.replace("-", "") + " ")  # as the answer writes it, sign kept
         hit = figures.get(f.figure) or (f.size and nearest(f, figures))
         if hit:
-            held[f.at] = (Decimal(f.figure), shown)
+            held[f.at] = (Decimal(f.figure), shown, kind(f, shown))
         if f.figure in seen or f.at in covered:
             continue
         seen.add(f.figure)
@@ -111,14 +111,17 @@ def scan(answer, files):
             results.append({**core.claim(file, spelling, page), "quote": shown, "kind": "figure", "places": places.get(f.figure, 1), **rounded})
         elif files:
             missing.append((f, shown))
-    for _ in range(2):  # twice, so a figure made from one worked out first is found too
-        for f, shown in [m for m in missing if m[0].at not in held]:
-            step = sums.worked_out(f.at, Decimal(f.figure), sums.unit(f.digits, f.size, f.percent), held)
-            if step:
-                held[f.at] = (Decimal(f.figure), shown)
-                inputs = [held[i][1] for i in step[1]]
-                results.append({**NOWHERE, "status": "worked out", "quote": shown, "kind": "figure", "formula": step[0],
-                                "inputs": inputs, "text": f"worked out · {shown} = {step[0]}"})
+    # Amounts first, each round adding what it worked out, so one made from another is found too;
+    # then percents and ratios, with every amount in hand. A percent never makes an amount, so no
+    # figure is ever made from itself.
+    for amounts, rounds in ((True, 3), (False, 1)):
+        for _ in range(rounds):
+            for f, shown in [m for m in missing if m[0].at not in held and (kind(*m) == "amount") == amounts]:
+                step = sums.worked_out(f.at, Decimal(f.figure), sums.unit(f.digits, f.size, f.percent), kind(f, shown), held)
+                if step:
+                    held[f.at] = (Decimal(f.figure), shown, kind(f, shown))
+                    results.append({**NOWHERE, "status": "worked out", "quote": shown, "kind": "figure", "formula": step[0],
+                                    "text": f"worked out · {shown} = {step[0]}"})
     for f, shown in missing:
         if f.at not in held:  # in no file: say so, with no file and no picture, since there is nothing to show
             results.append({**NOWHERE, "quote": shown, "kind": "figure", "text": f"not found · {shown} is in none of the files"})
@@ -168,6 +171,12 @@ def figures_in(keys):
             found.append(Figure(i, 2 if after else 1, figure_, f"{k} {keys[i + 1]}" if after else k,
                                 m[2], size, bool(m[4]) or after == "%"))
     return found
+
+
+def kind(f, shown):
+    """What a figure measures, for which steps can make it (sums.py): a percent, an amount (a
+    currency sign or a size: $95,315M, 4.5 billion), or a plain number (2.7, as in "2.7 times")."""
+    return "percent" if f.percent else "amount" if f.size or any(c in shown for c in "$€£") else "number"
 
 
 def nearest(f, figures):

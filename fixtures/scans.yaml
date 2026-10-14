@@ -69,3 +69,11 @@
     - [figure, worked out, "23.0%"]         # made from a held figure and a worked-out one
     - [figure, not found, "$500M"]          # in no file, and no step makes it
   skip: []
+- files: [fixtures/filing.md]
+  answer: |
+    Return on assets was 7.9% and return on investment 15.1%, so return on equity is about 23.0%. Equity grew about 9% (from $91,013M to $99,617M).
+  find:
+    - [figure, exact, "7.9%"]
+    - [figure, not found, "23.0%"]          # 7.9% + 15.1% is 23.0%, but percents are never added: a coincidence
+    - [figure, not found, "9%"]             # $99,617M ÷ $91,013M − 1 is 9.45%, which rounds to 9%, but 9% is too rough to tell what made it
+  skip: []

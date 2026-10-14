@@ -323,7 +323,8 @@ def filing():
         "# Consolidated statement (Amounts in millions)\n\n"
         "Net income attributable to shareholders 21,893\n"
         "Total shareholders' equity 99,617 at year-end and 91,013 a year earlier\n"
-        "Total assets 284,668\n")
+        "Total assets 284,668\n"
+        "Return on assets 7.9% and return on investment 15.1%\n")
 
 
 if __name__ == "__main__":
