@@ -12,13 +12,15 @@ SCALE = 2           # render at 2x so text is crisp on high-res screens
 HEADER = 18         # header line height in points (36px at 2x)
 LINES = 2           # whole lines of text kept above and below the hit
 MARGIN = 12         # points kept left and right of the text
+NARROW = 0.3        # a column narrower than this share of the page is a table's: its rows are shown whole
 MIN_VIEW = 280      # a table is never shown shorter than this, so its header row stays in view
 
 
 # [stop 6] Choose how much of the page to show.
 # Close in on the hit: the hit's lines and two whole lines either side, and only as wide as
 # the text around it (one column of a two-column paper), so the words are big enough to read
-# in a terminal card. A table (`whole`) keeps a third of the page or more, full width, so its
+# in a terminal card; a hit in a narrow column (a figure in a table) takes its rows' whole width,
+# so the row's label shows. A spreadsheet (`whole`) keeps a third of the page or more, full width, so its
 # header row stays in view. Lines are never sliced in half at the edges, nor the page edge passed.
 def region(page, rects, whole=False):
     box = page.rect
@@ -54,6 +56,10 @@ def region(page, rects, whole=False):
         top = max(rows[above[0]].y0, rows[above[0] - 1].y1 if above[0] else 0) if above else hit.y0 - 4
         bottom = rows[below[-1]].y1 + 1 if below else hit.y1 + 4
         near = [r for r, m in zip(rows, mid) if top < m < bottom]
+        # A narrow column is a table's: a number alone says nothing, so take the whole width of
+        # its rows, and the row's label (`Consolidated net income`) is in the picture with it.
+        if max([hit.x1] + [r.x1 for r in near]) - min([hit.x0] + [r.x0 for r in near]) < box.width * NARROW:
+            near = [line for line in lines if top < (line.y0 + line.y1) / 2 < bottom]
     left = min([hit.x0] + [r.x0 for r in near]) - MARGIN if not whole else box.x0
     right = max([hit.x1] + [r.x1 for r in near]) + MARGIN if not whole else box.x1
     return pymupdf.Rect(max(left, box.x0), max(top, box.y0), min(right, box.x1), min(bottom, box.y1))
